@@ -50,12 +50,12 @@ namespace zulip_cs_cli
         public static string FindZulipRC(string startingDir)
         {
             string currentDir = startingDir;
-            string filePath = Path.Combine(currentDir, ".zuliprc");
+            string filePath = Path.Combine(currentDir, "zuliprc");
 
             while (!File.Exists(filePath))
             {
                 // check for /temp/.zuliprc
-                string pathInSubdir = Path.Combine(currentDir, "temp", ".zuliprc");
+                string pathInSubdir = Path.Combine(currentDir, "secrets", "zuliprc");
 
                 if (File.Exists(pathInSubdir))
                 {
@@ -69,7 +69,7 @@ namespace zulip_cs_cli
                     throw new DirectoryNotFoundException("Could not find spec directory in path!");
                 }
 
-                filePath = Path.Combine(currentDir, ".zuliprc");
+                filePath = Path.Combine(currentDir, "zuliprc");
             }
 
             return filePath;
