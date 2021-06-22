@@ -19,13 +19,12 @@ namespace zulip_cs_lib
             Stream,
         }
 
-        
         /// <summary>Sends a private message.</summary>
         /// <param name="message">The message.</param>
         /// <param name="userEmails">  A variable-length parameters list containing user email addresses.</param>
         public async Task<ZulipResponse> SendPrivateMessage(string message, params string[] userEmails)
         {
-            return await SendMessage(message, ZulipMessageType.Private, userEmails);
+            return await SendMessage(message, null, ZulipMessageType.Private, userEmails);
         }
 
         /// <summary>Sends a private message.</summary>
@@ -33,30 +32,37 @@ namespace zulip_cs_lib
         /// <param name="userIds">  A variable-length parameters list containing user ids.</param>
         public async Task<ZulipResponse> SendPrivateMessage(string message, params int[] userIds)
         {
-            return await SendMessage(message, ZulipMessageType.Private, userIds);
+            return await SendMessage(message, null, ZulipMessageType.Private, userIds);
         }
 
         /// <summary>Sends a stream message.</summary>
-        /// <param name="message">The message.</param>
-        /// <param name="streamNames">  A variable-length parameters list containing destination stream names.</param>
-        public async Task<ZulipResponse> SendStreamMessage(string message, params string[] streamNames)
+        /// <param name="message">    The message.</param>
+        /// <param name="topic">      The stream topic.</param>
+        /// <param name="streamNames">A variable-length parameters list containing destination stream names.</param>
+        /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
+        public async Task<ZulipResponse> SendStreamMessage(string message, string topic, params string[] streamNames)
         {
-            return await SendMessage(message, ZulipMessageType.Stream, streamNames);
+            return await SendMessage(message, topic, ZulipMessageType.Stream, streamNames);
         }
 
         /// <summary>Sends a stream message.</summary>
-        /// <param name="message">The message.</param>
-        /// <param name="streamIds">  A variable-length parameters list containing stream ids.</param>
-        public async Task<ZulipResponse> SendStreamMessage(string message, params int[] streamIds)
+        /// <param name="message">  The message.</param>
+        /// <param name="topic">    The stream topic.</param>
+        /// <param name="streamIds">A variable-length parameters list containing stream ids.</param>
+        /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
+        public async Task<ZulipResponse> SendStreamMessage(string message, string topic, params int[] streamIds)
         {
-            return await SendMessage(message, ZulipMessageType.Stream, streamIds);
+            return await SendMessage(message, topic, ZulipMessageType.Stream, streamIds);
         }
 
         /// <summary>Sends a message.</summary>
-        /// <param name="message">The message.</param>
-        /// <param name="type">The message type (private, stream).</param>
-        /// <param name="stringIds">  A variable-length parameters list containing user email addresses or stream names.</param>
-        private Task<ZulipResponse> SendMessage(string message, ZulipMessageType type, params string[] stringIds)
+        /// <param name="message">  The message.</param>
+        /// <param name="topic">    The topic, if sending a stream message.</param>
+        /// <param name="type">     The message type (private, stream).</param>
+        /// <param name="stringIds">A variable-length parameters list containing user email addresses or
+        ///  stream names.</param>
+        /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
+        private Task<ZulipResponse> SendMessage(string message, string topic, ZulipMessageType type, params string[] stringIds)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -69,6 +75,7 @@ namespace zulip_cs_lib
                     break;
                 case ZulipMessageType.Stream:
                     data.Add("type", "stream");
+                    data.Add("topic", topic);
                     break;
             }
 
@@ -80,9 +87,11 @@ namespace zulip_cs_lib
 
         /// <summary>Sends a message.</summary>
         /// <param name="message">The message.</param>
-        /// <param name="type">The message type (private, stream).</param>
-        /// <param name="intIds">  A variable-length parameters list containing user or stream ids.</param>
-        private async Task<ZulipResponse> SendMessage(string message, ZulipMessageType type, params int[] intIds)
+        /// <param name="topic">  The topic, if sending a stream message.</param>
+        /// <param name="type">   The message type (private, stream).</param>
+        /// <param name="intIds"> A variable-length parameters list containing user or stream ids.</param>
+        /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
+        private async Task<ZulipResponse> SendMessage(string message, string topic, ZulipMessageType type, params int[] intIds)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -108,6 +117,7 @@ namespace zulip_cs_lib
                     break;
                 case ZulipMessageType.Stream:
                     data.Add("type", "stream");
+                    data.Add("topic", topic);
                     break;
             }
 

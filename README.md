@@ -1,3 +1,7 @@
+# Early Development Warning
+
+Note that this package is in the EARLY development stages and should not be used in production.
+
 # Zulip C# Library
 
 `zulip-cs-lib` is a library to connect to [Zulip](http://zulip.com) services.

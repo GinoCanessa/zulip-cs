@@ -5,6 +5,7 @@ using zulip_cs_lib;
 
 namespace zulip_set_lib.tests
 {
+    /// <summary>An initialize parser tests.</summary>
     public class IniParserTests
     {
         [Fact]

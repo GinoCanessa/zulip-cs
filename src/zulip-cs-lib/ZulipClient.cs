@@ -28,8 +28,26 @@ namespace zulip_cs_lib
         /// <param name="httpClient">The HTTP client.</param>
         public ZulipClient(string site, string userEmail, string apiKey, HttpClient httpClient)
         {
+            if (string.IsNullOrEmpty(site) ||
+                (!Uri.TryCreate(site, UriKind.Absolute, out Uri siteUri)) ||
+                ((siteUri.Scheme != Uri.UriSchemeHttp) && (siteUri.Scheme != Uri.UriSchemeHttps)))
+            {
+                throw new ArgumentException(nameof(site));
+            };
+
+            if (string.IsNullOrEmpty(userEmail) ||
+                (!userEmail.Contains('@')))
+            {
+                throw new ArgumentException(nameof(userEmail));
+            }
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                throw new ArgumentException(nameof(apiKey));
+            }
+
             _site = site;
-            _siteUri = new Uri(site);
+            _siteUri = siteUri;
             _userEmail = userEmail;
             _apiKey = apiKey;
             _httpClient = httpClient;
@@ -86,10 +104,32 @@ namespace zulip_cs_lib
                 throw new KeyNotFoundException($"File: {zuliprcFilename} does not contain a `site` value!");
             }
 
-            _site = apiData["site"];
-            _siteUri = new Uri(_site);
-            _userEmail = apiData["email"];
-            _apiKey = apiData["key"];
+            string site = apiData["site"];
+            string userEmail = apiData["email"];
+            string apiKey = apiData["key"];
+
+            if (string.IsNullOrEmpty(site) ||
+                (!Uri.TryCreate(site, UriKind.Absolute, out Uri siteUri)) ||
+                ((siteUri.Scheme != Uri.UriSchemeHttp) && (siteUri.Scheme != Uri.UriSchemeHttps)))
+            {
+                throw new ArgumentException("site");
+            };
+
+            if (string.IsNullOrEmpty(userEmail) ||
+                (!userEmail.Contains('@')))
+            {
+                throw new ArgumentException("email");
+            }
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                throw new ArgumentException("key");
+            }
+
+            _site = site;
+            _siteUri = siteUri;
+            _userEmail = userEmail;
+            _apiKey = apiKey;
             _httpClient = httpClient;
 
             string authHeader = _userEmail + ":" + _apiKey;

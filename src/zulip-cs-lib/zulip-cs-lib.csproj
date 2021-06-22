@@ -3,6 +3,19 @@
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
     <RootNamespace>zulip_cs_lib</RootNamespace>
+    <Version>0.0.1-alpha.1</Version>
+    <Authors>Gino Canessa</Authors>
+    <Company></Company>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/GinoCanessa/zulip-cs</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/GinoCanessa/zulip-cs</RepositoryUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+  </ItemGroup>
 
 </Project>
