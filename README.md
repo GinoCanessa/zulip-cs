@@ -4,11 +4,12 @@ Note that this package is in the EARLY development stages and should not be used
 
 # Zulip C# Library
 
-`zulip-cs-lib` is a library to connect to [Zulip](http://zulip.com) services.
+`zulip-cs-lib` is a library to connect to [Zulip](http://zulip.com) services.  It is designed to take as few dependencies as possible.
 
-The project was started because the current community C# library ([Zulip-CSharp](https://github.com/zulip/zulip-csharp)) was built in earlier versions of .Net and takes a lot of dependencies I didn't want (e.g., RestSharp, Newtonsoft JS).
-
-Code was developed using both [Zulip-CSharp](https://github.com/zulip/zulip-csharp) and [Zulip-JS](https://github.com/zulip/zulip-js) as inspiriation.
+Code was developed using several existing projects for guidance and inspiration:
+* [swift-zulip-api](https://github.com/zulip/swift-zulip-api)
+* [zulip-csharp](https://github.com/zulip/zulip-csharp)
+* [zulip-js](https://github.com/zulip/zulip-js)
 
 
 # Documentation

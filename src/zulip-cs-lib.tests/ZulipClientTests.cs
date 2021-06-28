@@ -23,10 +23,10 @@ namespace zulip_set_lib.tests
         [Fact]
         public void ZulipClient_CreateMockHttp()
         {
-            ZulipResponse mockResponse = new ZulipResponse()
+            Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
             {
-                Result = "success",
-                Message = "mocked message"
+                { "result", "success" },
+                { "msg", "mocked message" },
             };
 
             bool success = Utils.GetMockHttpClient(

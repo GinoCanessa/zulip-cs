@@ -18,11 +18,11 @@ namespace zulip_set_lib.tests
         public async void Message_SendPrivate_EmailSingle()
         {
             HttpStatusCode code = HttpStatusCode.OK;
-            ZulipResponse mockResponse = new ZulipResponse()
+            Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
             {
-                Result = "success",
-                Message = "",
-                Id = 1,
+                { "result", "success" },
+                { "msg", string.Empty },
+                { "id", 1 },
             };
 
             bool success = Utils.TryGetMockedClient(
@@ -34,7 +34,9 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            ZulipResponse actual = await zulipClient.SendPrivateMessage("message", "user1@example.org");
+            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+                "message", 
+                "user1@example.org");
 
             mockMessageHandler.Protected().Verify(
                 "SendAsync",
@@ -42,19 +44,19 @@ namespace zulip_set_lib.tests
                 ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Post),
                 ItExpr.IsAny<CancellationToken>());
 
-            Assert.Equal(mockResponse.Id, actual.Id);
-            Assert.Equal(mockResponse.Result, actual.Result);
+            Assert.True(actual.success, $"TrySendPrivate failed: {actual.details}");
+            Assert.Equal((ulong)mockResponse["id"], actual.messageId);
         }
 
         [Fact]
         public async void Message_SendPrivate_EmailMultiple()
         {
             HttpStatusCode code = HttpStatusCode.OK;
-            ZulipResponse mockResponse = new ZulipResponse()
+            Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
             {
-                Result = "success",
-                Message = "",
-                Id = 1,
+                { "result", "success" },
+                { "msg", string.Empty },
+                { "id", 1 },
             };
 
             bool success = Utils.TryGetMockedClient(
@@ -66,7 +68,10 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            ZulipResponse actual = await zulipClient.SendPrivateMessage("message", "user1@example.org", "user2@example.org");
+            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+                "message",
+                "user1@example.org",
+                "user2@example.org");
 
             mockMessageHandler.Protected().Verify(
                 "SendAsync",
@@ -74,19 +79,19 @@ namespace zulip_set_lib.tests
                 ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Post),
                 ItExpr.IsAny<CancellationToken>());
 
-            Assert.Equal(mockResponse.Id, actual.Id);
-            Assert.Equal(mockResponse.Result, actual.Result);
+            Assert.True(actual.success, $"TrySendPrivate failed: {actual.details}");
+            Assert.Equal((ulong)mockResponse["id"], actual.messageId);
         }
 
         [Fact]
         public async void Message_SendPrivate_IdSingle()
         {
             HttpStatusCode code = HttpStatusCode.OK;
-            ZulipResponse mockResponse = new ZulipResponse()
+            Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
             {
-                Result = "success",
-                Message = "",
-                Id = 1,
+                { "result", "success" },
+                { "msg", string.Empty },
+                { "id", 1 },
             };
 
             bool success = Utils.TryGetMockedClient(
@@ -98,7 +103,9 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            ZulipResponse actual = await zulipClient.SendPrivateMessage("message", 1);
+            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+                "message",
+                1);
 
             mockMessageHandler.Protected().Verify(
                 "SendAsync",
@@ -106,19 +113,19 @@ namespace zulip_set_lib.tests
                 ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Post),
                 ItExpr.IsAny<CancellationToken>());
 
-            Assert.Equal(mockResponse.Id, actual.Id);
-            Assert.Equal(mockResponse.Result, actual.Result);
+            Assert.True(actual.success, $"TrySendPrivate failed: {actual.details}");
+            Assert.Equal((ulong)mockResponse["id"], actual.messageId);
         }
 
         [Fact]
         public async void Message_SendPrivate_IdMultiple()
         {
             HttpStatusCode code = HttpStatusCode.OK;
-            ZulipResponse mockResponse = new ZulipResponse()
+            Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
             {
-                Result = "success",
-                Message = "",
-                Id = 1,
+                { "result", "success" },
+                { "msg", string.Empty },
+                { "id", 1 },
             };
 
             bool success = Utils.TryGetMockedClient(
@@ -130,7 +137,10 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            ZulipResponse actual = await zulipClient.SendPrivateMessage("message", 1, 2);
+            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+                "message",
+                1,
+                2);
 
             mockMessageHandler.Protected().Verify(
                 "SendAsync",
@@ -138,19 +148,19 @@ namespace zulip_set_lib.tests
                 ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Post),
                 ItExpr.IsAny<CancellationToken>());
 
-            Assert.Equal(mockResponse.Id, actual.Id);
-            Assert.Equal(mockResponse.Result, actual.Result);
+            Assert.True(actual.success, $"TrySendPrivate failed: {actual.details}");
+            Assert.Equal((ulong)mockResponse["id"], actual.messageId);
         }
 
         [Fact]
         public async void Message_SendPrivate_InvalidEmail()
         {
             HttpStatusCode code = HttpStatusCode.OK;
-            ZulipResponse mockResponse = new ZulipResponse()
+            Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
             {
-                Result = "error",
-                Message = "Invalid email 'invalid@example.org'",
-                ErrorCode = "BAD_REQUEST",
+                { "result", "error" },
+                { "msg", "Invalid email 'invalid@example.org'" },
+                { "code", "BAD_REQUEST" },
             };
 
             bool success = Utils.TryGetMockedClient(
@@ -162,7 +172,9 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            ZulipResponse actual = await zulipClient.SendPrivateMessage("message", "invalid@example.org");
+            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+                "message",
+                "invalid@example.org");
 
             mockMessageHandler.Protected().Verify(
                 "SendAsync",
@@ -170,9 +182,8 @@ namespace zulip_set_lib.tests
                 ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Post),
                 ItExpr.IsAny<CancellationToken>());
 
-            Assert.Equal(mockResponse.Result, actual.Result);
-            Assert.Equal(mockResponse.Message, actual.Message);
-            Assert.Equal(mockResponse.ErrorCode, actual.ErrorCode);
+            Assert.False(actual.success, $"TrySendPrivate succeeded on invalid email!");
+            Assert.False(string.IsNullOrEmpty(actual.details), $"TrySendPrivate must contain details on errors!");
         }
     }
 }

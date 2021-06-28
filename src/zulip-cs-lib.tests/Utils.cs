@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
@@ -77,15 +79,59 @@ namespace zulip_set_lib.tests
             return true;
         }
 
+        ///// <summary>Content for response.</summary>
+        ///// <param name="response">The response.</param>
+        ///// <returns>A HttpContent.</returns>
+        //internal static HttpContent ContentForResponse(ZulipResponse response)
+        //{
+        //    return new StringContent(
+        //        System.Text.Json.JsonSerializer.Serialize(response),
+        //        System.Text.Encoding.UTF8,
+        //        "application/json");
+        //}
+
         /// <summary>Content for response.</summary>
         /// <param name="response">The response.</param>
         /// <returns>A HttpContent.</returns>
-        internal static HttpContent ContentForResponse(ZulipResponse response)
+        internal static HttpContent ContentForResponse(Dictionary<string, dynamic> response)
         {
-            return new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(response),
-                System.Text.Encoding.UTF8,
-                "application/json");
+            using (MemoryStream stream = new MemoryStream())
+            {
+                using (Utf8JsonWriter writer = new Utf8JsonWriter(stream))
+                {
+                    writer.WriteStartObject();
+
+                    foreach (KeyValuePair<string, dynamic> kvp in response)
+                    {
+                        switch (kvp.Value)
+                        {
+                            case int valueInt:
+                                writer.WriteNumber(kvp.Key, valueInt);
+                                break;
+
+                            case ulong valueUlong:
+                                writer.WriteNumber(kvp.Key, valueUlong);
+                                break;
+
+                            case string valueString:
+                                writer.WriteString(kvp.Key, valueString);
+                                break;
+                        }
+                    }
+
+                    writer.WriteEndObject();
+                }
+
+                stream.Seek(0, SeekOrigin.Begin);
+
+                using (StreamReader reader = new StreamReader(stream))
+                {
+                    return new StringContent(
+                        reader.ReadToEnd(),
+                        System.Text.Encoding.UTF8,
+                        "application/json");
+                }
+            }
         }
     }
 }

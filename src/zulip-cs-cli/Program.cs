@@ -28,16 +28,38 @@ namespace zulip_cs_cli
 
             ZulipClient client = new ZulipClient(zuliprcFilename);
 
-            ZulipResponse response = client.SendPrivateMessage(
-                $"C# test - {DateTime.Now}", 
+            //ulong editMessageId = 243712577;
+
+            //(bool success, string details) editResponse = client.Messages.TryEdit(
+            //    editMessageId,
+            //    $"Edited at: {DateTime.Now}").Result;
+
+            //Console.WriteLine(
+            //    $"Edit message attempt:\n" +
+            //    $" success: {editResponse.success}\n" +
+            //    $" details: {editResponse.details}");
+
+            (bool success, string details, ulong messageId) sendResponse = client.Messages.TrySendPrivate(
+                $"C# test - {DateTime.Now}",
                 "gino.canessa@microsoft.com").Result;
 
             Console.WriteLine(
-                $"Post message attempt:\n" +
-                $" HTTP Response: {response.HttpResponseCode}\n" +
-                $"     HTTP Body: {response.HttpResponseBody}\n" +
-                $"    Message ID: {response.Id}\n" +
-                $"       Message: {response.Message}");
+                $"Send private message attempt:\n" +
+                $" success: {sendResponse.success}\n" +
+                $" details: {sendResponse.details}\n" +
+                $"      id: {sendResponse.messageId}");
+
+            if (sendResponse.success)
+            {
+                (bool success, string details) editResponse = client.Messages.TryEdit(
+                    sendResponse.messageId,
+                    $"Edited at: {DateTime.Now}").Result;
+
+                Console.WriteLine(
+                    $"Edit message attempt:\n" +
+                    $" success: {editResponse.success}\n" +
+                    $" details: {editResponse.details}");
+            }
 
             return 0;
         }
@@ -54,7 +76,7 @@ namespace zulip_cs_cli
 
             while (!File.Exists(filePath))
             {
-                // check for /temp/.zuliprc
+                // check for /secrets/.zuliprc
                 string pathInSubdir = Path.Combine(currentDir, "secrets", "zuliprc");
 
                 if (File.Exists(pathInSubdir))
@@ -66,7 +88,7 @@ namespace zulip_cs_cli
 
                 if (currentDir == Path.GetPathRoot(currentDir))
                 {
-                    throw new DirectoryNotFoundException("Could not find spec directory in path!");
+                    throw new DirectoryNotFoundException("Could not find zuliprc in path!");
                 }
 
                 filePath = Path.Combine(currentDir, "zuliprc");
