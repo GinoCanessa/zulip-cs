@@ -15,7 +15,7 @@ namespace zulip_cs_cli
         {
             if (string.IsNullOrEmpty(zuliprcFilename))
             {
-                string basePath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string basePath = AppContext.BaseDirectory;
 
                 zuliprcFilename = FindZulipRC(basePath);
             }
@@ -26,9 +26,9 @@ namespace zulip_cs_cli
                 return 1;
             }
 
-            ZulipClient client = new ZulipClient(zuliprcFilename);
+            ZulipClient client = new ZulipClient(zuliprcFilename, @"C:\Windows\system32\curl.exe");
 
-            //ulong editMessageId = 243712577;
+            //ulong editMessageId = 244487707;
 
             //(bool success, string details) editResponse = client.Messages.TryEdit(
             //    editMessageId,
@@ -49,17 +49,30 @@ namespace zulip_cs_cli
                 $" details: {sendResponse.details}\n" +
                 $"      id: {sendResponse.messageId}");
 
-            if (sendResponse.success)
-            {
-                (bool success, string details) editResponse = client.Messages.TryEdit(
-                    sendResponse.messageId,
-                    $"Edited at: {DateTime.Now}").Result;
+            //(bool success, string details, ulong messageId) sendResponse = client.Messages.TrySendStream(
+            //    $"C# test content - {DateTime.Now}",
+            //    $"Topic for testing",
+            //    "liveness-monitor-bot/notification").Result;
 
-                Console.WriteLine(
-                    $"Edit message attempt:\n" +
-                    $" success: {editResponse.success}\n" +
-                    $" details: {editResponse.details}");
-            }
+            //Console.WriteLine(
+            //    $"Send private message attempt:\n" +
+            //    $" success: {sendResponse.success}\n" +
+            //    $" details: {sendResponse.details}\n" +
+            //    $"      id: {sendResponse.messageId}");
+
+            //if (sendResponse.success)
+            //{
+            //    System.Threading.Tasks.Task.Delay(1000).Wait();
+
+            //    (bool success, string details) editResponse = client.Messages.TryEdit(
+            //        sendResponse.messageId,
+            //        $"Edited at: {DateTime.Now}").Result;
+
+            //    Console.WriteLine(
+            //        $"Edit message attempt:\n" +
+            //        $" success: {editResponse.success}\n" +
+            //        $" details: {editResponse.details}");
+            //}
 
             return 0;
         }

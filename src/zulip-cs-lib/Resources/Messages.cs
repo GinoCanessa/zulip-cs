@@ -172,6 +172,8 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Patch, $"{_messageApiEndpoint}/{messageId}", data);
 
+            Console.WriteLine($"Messages.Edit <<< {response.HttpResponseBody}");
+
             if (response.Result == ZulipResponse.ZulipResultSuccess)
             {
                 return (true, null);
@@ -399,6 +401,8 @@ namespace zulip_cs_lib.Resources
             params string[] streamNames)
         {
             ZulipResponse response = await Send(message, topic, ZulipMessageType.Stream, streamNames);
+
+            Console.WriteLine($"Messages.SendStream <<< {response.HttpResponseBody}");
 
             if (response.Result == ZulipResponse.ZulipResultSuccess)
             {

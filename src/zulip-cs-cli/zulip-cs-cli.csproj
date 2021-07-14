@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net5.0</TargetFramework>
     <RootNamespace>zulip_cs_cli</RootNamespace>
-    <Version>0.0.1-alpha.2</Version>
+    <Version>0.0.1-alpha.5</Version>
   </PropertyGroup>
 
   <ItemGroup>
