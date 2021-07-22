@@ -487,20 +487,7 @@ namespace zulip_cs_lib.Resources
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
-            string recipients = "[";
-            foreach (int user in intIds)
-            {
-                if (string.IsNullOrEmpty(recipients))
-                {
-                    recipients += user;
-                }
-                else
-                {
-                    recipients += ", " + user;
-                }
-            }
-
-            recipients += "]";
+            string recipients = "[" + string.Join(", ", intIds) + "]";
 
             switch (type)
             {
