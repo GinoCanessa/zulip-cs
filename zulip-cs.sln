@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31410.357
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "zulip-cs-lib", "zulip-cs-lib\zulip-cs-lib.csproj", "{8CCC84DA-BFF7-46FD-B1F2-DC81C86C7D70}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "zulip-cs-lib", "src\zulip-cs-lib\zulip-cs-lib.csproj", "{8CCC84DA-BFF7-46FD-B1F2-DC81C86C7D70}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{286F4F44-3B22-4BCC-8CCF-B0080AE6C984}"
 	ProjectSection(SolutionItems) = preProject
@@ -13,9 +13,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		..\THIRDPARTYNOTICES.md = ..\THIRDPARTYNOTICES.md
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "zulip-set-lib.tests", "zulip-cs-lib.tests\zulip-set-lib.tests.csproj", "{73CC75DF-3811-46AF-A152-411BDF833779}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "zulip-set-lib.tests", "src\zulip-cs-lib.tests\zulip-set-lib.tests.csproj", "{73CC75DF-3811-46AF-A152-411BDF833779}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "zulip-cs-cli", "zulip-cs-cli\zulip-cs-cli.csproj", "{8C68426B-FB24-4F68-B390-6DC5FCD3503E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "zulip-cs-cli", "src\zulip-cs-cli\zulip-cs-cli.csproj", "{8C68426B-FB24-4F68-B390-6DC5FCD3503E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
