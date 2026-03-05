@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "cli-send-pm": {
+      "commandName": "Project",
+      "commandLineArgs": "send-pm --emails gino.canessa@microsoft.com --message test"
+    },
+    "cli-get-messages": {
+      "commandName": "Project",
+      "commandLineArgs": "get-messages"
+    }
+  }
+}
