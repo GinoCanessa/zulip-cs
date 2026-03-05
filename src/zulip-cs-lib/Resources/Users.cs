@@ -25,6 +25,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets the current user.</summary>
+        /// <remarks>Feature level 433: user objects added <c>is_imported_stub</c> in user payloads.</remarks>
         /// <returns>An asynchronous result that yields (success, details, user).</returns>
         public async Task<(bool success, string details, UserObject user)> TryGetOwnUser()
         {
@@ -49,6 +50,10 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets a user by ID.</summary>
         /// <param name="userId">The user ID.</param>
+        /// <remarks>
+        /// Feature level 437: user lookup behaviors were refined for compatibility edge cases.
+        /// Feature level 433: user payloads include imported-stub metadata.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, user).</returns>
         public async Task<(bool success, string details, UserObject user)> TryGetUser(int userId)
         {
@@ -98,6 +103,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all users.</summary>
+        /// <remarks>Feature level 437: user-list responses received compatibility corrections for specific client scenarios.</remarks>
         /// <returns>An asynchronous result that yields (success, details, members).</returns>
         public async Task<(bool success, string details, List<UserObject> members)> TryGetAll()
         {
@@ -126,6 +132,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="type">(Optional) The type of message being composed.</param>
         /// <param name="streamId">(Optional) The stream ID for channel typing notifications.</param>
         /// <param name="topic">(Optional) The topic for channel typing notifications.</param>
+        /// <remarks>Feature level 372: passing "(no topic)" is interpreted by the server as an empty topic name.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TrySetTypingStatus(
             string op,
@@ -209,6 +216,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="userId">The user ID.</param>
         /// <param name="fullName">(Optional) New full name.</param>
         /// <param name="role">(Optional) New role.</param>
+        /// <remarks>Feature level 313: API supports <c>new_email</c> updates; this wrapper currently exposes full name and role updates.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdate(int userId, string fullName = null, int? role = null)
         {
@@ -236,6 +244,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deactivates a user.</summary>
         /// <param name="userId">The user ID.</param>
+        /// <remarks>Feature level 459: deactivation accepts an <c>actions</c> parameter for extra cleanup workflows.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDeactivate(int userId)
         {
@@ -280,6 +289,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets user status.</summary>
         /// <param name="userId">The user ID.</param>
+        /// <remarks>Feature level 262: user-status retrieval endpoint is tracked in API history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, status).</returns>
         public async Task<(bool success, string details, UserStatusObject status)> TryGetStatus(int userId)
         {
@@ -307,6 +317,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="emojiName">(Optional) Emoji name.</param>
         /// <param name="emojiCode">(Optional) Emoji code.</param>
         /// <param name="reactionType">(Optional) Reaction type.</param>
+        /// <remarks>Feature level 148: own-status update endpoint is tracked in API history.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdateOwnStatus(
             string statusText = null,
@@ -342,6 +353,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets presence info for a user.</summary>
         /// <param name="idOrEmail">The user ID or email.</param>
+        /// <remarks>Feature level 178: user and realm presence APIs were introduced and expanded in this period.</remarks>
         /// <returns>An asynchronous result that yields (success, details, presence).</returns>
         public async Task<(bool success, string details, Dictionary<string, PresenceInfo> presence)> TryGetPresence(string idOrEmail)
         {
@@ -365,6 +377,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Mutes a user.</summary>
         /// <param name="userId">The user ID to mute.</param>
+        /// <remarks>Feature level 188: muted-users endpoints were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryMuteUser(int userId)
         {
@@ -387,6 +400,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Unmutes a user.</summary>
         /// <param name="userId">The user ID to unmute.</param>
+        /// <remarks>Feature level 188: muted-users endpoints were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUnmuteUser(int userId)
         {
@@ -457,6 +471,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets user groups.</summary>
+        /// <remarks>Feature level 324: user-group objects gained additional governance fields such as <c>can_remove_members_group</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details, groups).</returns>
         public async Task<(bool success, string details, List<UserGroupObject> groups)> TryGetGroups()
         {
@@ -482,6 +497,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="name">The group name.</param>
         /// <param name="description">The group description.</param>
         /// <param name="members">The member user IDs.</param>
+        /// <remarks>Feature level 324: creation supports newer group-permission fields in Zulip API payloads.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryCreateGroup(string name, string description, int[] members)
         {
@@ -511,6 +527,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets group members.</summary>
         /// <param name="groupId">The group ID.</param>
+        /// <remarks>Feature level 303: group-members listing endpoint is tracked in changelog history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, members).</returns>
         public async Task<(bool success, string details, List<int> members)> TryGetGroupMembers(int groupId)
         {

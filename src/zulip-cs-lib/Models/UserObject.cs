@@ -3,6 +3,10 @@ using System.Text.Json.Serialization;
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip user.</summary>
+    /// <remarks>
+    /// Feature levels 433 and 437 updated user payload behavior and metadata across user-list and user-detail endpoints.
+    /// This model contains the core fields used by this library version.
+    /// </remarks>
     public class UserObject
     {
         /// <summary>Gets or sets the user ID.</summary>

@@ -25,6 +25,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all invitations.</summary>
+        /// <remarks>Feature level 267: invitation listing endpoint behavior was documented in changelog tracking.</remarks>
         /// <returns>An asynchronous result that yields (success, details, invites).</returns>
         public async Task<(bool success, string details, List<InviteObject> invites)> TryGetAll()
         {
@@ -50,6 +51,10 @@ namespace zulip_cs_lib.Resources
         /// <param name="inviteeEmails">Comma-separated emails.</param>
         /// <param name="streamIds">JSON array of stream IDs.</param>
         /// <param name="inviteAs">(Optional) Role for invitees.</param>
+        /// <remarks>
+        /// Feature level 416: invitation APIs added <c>welcome_message_custom_text</c> support.
+        /// This wrapper keeps the core invite parameters and remains compatible.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TrySend(
             string inviteeEmails,
@@ -84,6 +89,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Creates a reusable invite link.</summary>
         /// <param name="streamIds">JSON array of stream IDs.</param>
         /// <param name="inviteAs">(Optional) Role for invitees.</param>
+        /// <remarks>Feature level 416: multiuse invitation links gained welcome-message customization support.</remarks>
         /// <returns>An asynchronous result that yields (success, details, linkUrl).</returns>
         public async Task<(bool success, string details, string linkUrl)> TryCreateLink(
             string streamIds,
@@ -159,6 +165,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Revokes a multiuse invite link.</summary>
         /// <param name="inviteId">The multiuse invite ID.</param>
+        /// <remarks>Feature level 209: multiuse invite-link revocation endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryRevokeLink(int inviteId)
         {

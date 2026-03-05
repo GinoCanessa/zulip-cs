@@ -25,6 +25,9 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all channels (streams).</summary>
+        /// <remarks>
+        /// Feature level 441: stream/subscription payloads include newer channel permission group settings such as <c>can_create_topic_group</c>.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, streams).</returns>
         public async Task<(bool success, string details, List<StreamObject> streams)> TryGetAll()
         {
@@ -48,6 +51,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets a channel by stream ID.</summary>
         /// <param name="streamId">The stream ID.</param>
+        /// <remarks>Feature level 394: stream objects added <c>subscriber_count</c> in API responses.</remarks>
         /// <returns>An asynchronous result that yields (success, details, stream).</returns>
         public async Task<(bool success, string details, StreamObject stream)> TryGetById(int streamId)
         {
@@ -98,6 +102,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets the current user's subscriptions.</summary>
+        /// <remarks>Feature level 441: subscription payloads include updated channel-level permission group metadata.</remarks>
         /// <returns>An asynchronous result that yields (success, details, subscriptions).</returns>
         public async Task<(bool success, string details, List<SubscriptionObject> subscriptions)> TryGetSubscriptions()
         {
@@ -121,6 +126,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Subscribes to channels.</summary>
         /// <param name="subscriptions">The subscriptions as JSON array of {name} objects.</param>
+        /// <remarks>Feature level 441: subscribe supports newer channel permission-group parameters (for example <c>can_create_topic_group</c>).</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TrySubscribe(string subscriptions)
         {
@@ -148,6 +154,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Unsubscribes from channels.</summary>
         /// <param name="subscriptions">The channel names to unsubscribe from.</param>
+        /// <remarks>Feature level 362: unsubscribe/edit operations support archived channels when permissions allow.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUnsubscribe(string[] subscriptions)
         {
@@ -175,6 +182,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets topics for a stream.</summary>
         /// <param name="streamId">The stream ID.</param>
+        /// <remarks>Feature level 334: topic-list APIs added support for empty topic names via <c>allow_empty_topic_name</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details, topics).</returns>
         public async Task<(bool success, string details, List<TopicObject> topics)> TryGetTopics(int streamId)
         {
@@ -201,6 +209,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets subscribers of a stream.</summary>
         /// <param name="streamId">The stream ID.</param>
+        /// <remarks>Feature level 79: subscriber listing endpoint has long-standing support tracked in API history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, subscribers).</returns>
         public async Task<(bool success, string details, List<int> subscribers)> TryGetSubscribers(int streamId)
         {
@@ -228,6 +237,10 @@ namespace zulip_cs_lib.Resources
         /// <param name="newName">(Optional) New name.</param>
         /// <param name="isPrivate">(Optional) Privacy setting.</param>
         /// <param name="isWebPublic">(Optional) Web public setting.</param>
+        /// <remarks>
+        /// Feature level 441: stream update supports newer permission-group parameters in Zulip API.
+        /// Feature level 349: administrators with metadata access can modify many stream settings without content access.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdate(
             int streamId,
@@ -262,6 +275,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Archives a stream/channel.</summary>
         /// <param name="streamId">The stream ID.</param>
+        /// <remarks>Feature level 349: channel/organization admins can archive streams with metadata access under updated rules.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryArchive(int streamId)
         {
@@ -284,6 +298,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets email address for a stream.</summary>
         /// <param name="streamId">The stream ID.</param>
+        /// <remarks>Feature level 448: access to a channel email address depends on permission to post to that channel.</remarks>
         /// <returns>An asynchronous result that yields (success, details, email).</returns>
         public async Task<(bool success, string details, string email)> TryGetEmailAddress(int streamId)
         {
@@ -308,6 +323,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Deletes a topic.</summary>
         /// <param name="streamId">The stream ID.</param>
         /// <param name="topicName">The topic name.</param>
+        /// <remarks>Feature level 256: dedicated topic-deletion endpoint support is tracked in changelog history.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDeleteTopic(int streamId, string topicName)
         {
@@ -391,6 +407,10 @@ namespace zulip_cs_lib.Resources
         /// <param name="stream">The stream name.</param>
         /// <param name="topic">The topic name.</param>
         /// <param name="op">The operation (add or remove).</param>
+        /// <remarks>
+        /// Feature level 170: topic muting support exists via this endpoint.
+        /// Newer Zulip API uses <c>POST /user_topics</c>; this wrapper currently targets the older muted-topics route.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdateTopicMuting(string stream, string topic, string op)
         {

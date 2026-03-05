@@ -144,6 +144,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="propagateMode">(Optional) The propagate mode.</param>
         /// <param name="sendNotificationToOldThread">(Optional) Whether to send notification to old thread.</param>
         /// <param name="sendNotificationToNewThread">(Optional) Whether to send notification to new thread.</param>
+        /// <remarks>Feature level 443: detached-upload timestamps in update-message responses are in seconds, not milliseconds.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryEdit(
             ulong messageId,
@@ -241,6 +242,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="emojiName">Name of the emoji (required).</param>
         /// <param name="emojiCode">(Optional) The emoji code.</param>
         /// <param name="reactionType">(Optional) The reaction type.</param>
+        /// <remarks>Feature level 354: reactions are supported in eligible unsubscribed private channels with group-based content access.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryAddEmoji(
             ulong messageId,
@@ -308,6 +310,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="emojiName">(Optional) Name of the emoji.</param>
         /// <param name="emojiCode">(Optional) The emoji code.</param>
         /// <param name="reactionType">(Optional) The reaction type.</param>
+        /// <remarks>Feature level 354: reaction removal follows the same expanded private-channel access model as adding reactions.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryRemoveEmoji(
             ulong messageId,
@@ -367,6 +370,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Sends a private message.</summary>
         /// <param name="message">The message.</param>
         /// <param name="userEmails">A variable-length parameters list containing user email addresses.</param>
+        /// <remarks>Feature level 370: for send-message APIs, the special "(no topic)" value is normalized to an empty topic name.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
         public async Task<(bool success, string details, ulong messageId)> TrySendPrivate(
             string message,
@@ -402,6 +406,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Sends a private message.</summary>
         /// <param name="message">The message.</param>
         /// <param name="userIds">A variable-length parameters list containing user ids.</param>
+        /// <remarks>Feature level 370: send-message handling includes the normalized empty-topic behavior in unified message posting.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
         public async Task<(bool success, string details, ulong messageId)> TrySendPrivate(string message, params int[] userIds)
         {
@@ -437,6 +442,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="message">The message.</param>
         /// <param name="topic">The stream topic.</param>
         /// <param name="streamNames">A variable-length parameters list containing destination stream names.</param>
+        /// <remarks>Feature level 370: the "(no topic)" placeholder is interpreted by Zulip as an empty topic name.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
         public async Task<(bool success, string details, ulong messageId)> TrySendStream(
             string message,
@@ -475,6 +481,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="message">The message.</param>
         /// <param name="topic">The stream topic.</param>
         /// <param name="streamIds">A variable-length parameters list containing stream ids.</param>
+        /// <remarks>Feature level 370: stream send semantics include normalized handling for empty topic names.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
         public async Task<(bool success, string details, ulong messageId)> TrySendStream(string message, string topic, params int[] streamIds)
         {
@@ -497,6 +504,10 @@ namespace zulip_cs_lib.Resources
         /// <param name="clientGravatar">(Optional) Whether to use client gravatar.</param>
         /// <param name="applyMarkdown">(Optional) Whether to apply markdown.</param>
         /// <param name="includeAnchor">(Optional) Whether to include the anchor message.</param>
+        /// <remarks>
+        /// Feature level 446: narrow syntax includes the <c>mentions</c> operator used by this endpoint.
+        /// Feature level 445: date-based anchoring support was added in Zulip API for message queries.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, messages, foundNewest, foundOldest).</returns>
         public async Task<(bool success, string details, List<MessageObject> messages, bool? foundNewest, bool? foundOldest)> TryGet(
             GetAnchorMode anchorMode,
@@ -596,6 +607,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Fetches a single message by ID.</summary>
         /// <param name="messageId">Identifier for the message.</param>
         /// <param name="applyMarkdown">(Optional) Whether to apply markdown.</param>
+        /// <remarks>Feature level 365: message objects include refined edit/move metadata semantics such as <c>last_moved_timestamp</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details, message, rawContent).</returns>
         public async Task<(bool success, string details, MessageObject message, string rawContent)> TryGetSingle(
             ulong messageId,
@@ -675,6 +687,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="messageIds">The message IDs.</param>
         /// <param name="operation">The flag operation (add or remove).</param>
         /// <param name="flag">The flag name (e.g., read, starred).</param>
+        /// <remarks>Feature level 355: responses can include channels skipped for unread operations via <c>ignored_because_not_subscribed_channels</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdateFlags(
             ulong[] messageIds,
@@ -718,6 +731,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets the edit history of a message.</summary>
         /// <param name="messageId">Identifier for the message.</param>
+        /// <remarks>Feature level 334: history APIs support empty topic names via the <c>allow_empty_topic_name</c> parameter.</remarks>
         /// <returns>An asynchronous result that yields (success, details, history).</returns>
         public async Task<(bool success, string details, List<MessageHistoryObject> history)> TryGetEditHistory(ulong messageId)
         {
@@ -747,6 +761,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Marks all messages as read.</summary>
+        /// <remarks>Feature level 211: mark-all-as-read endpoint was added to the API.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryMarkAllAsRead()
         {
@@ -843,6 +858,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets read receipts for a message.</summary>
         /// <param name="messageId">Identifier for the message.</param>
+        /// <remarks>Feature level 360: read receipts for archived channels are available when channel permissions allow access.</remarks>
         /// <returns>An asynchronous result that yields (success, details, userIds).</returns>
         public async Task<(bool success, string details, List<int> userIds)> TryGetReadReceipts(ulong messageId)
         {

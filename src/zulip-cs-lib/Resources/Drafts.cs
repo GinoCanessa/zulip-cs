@@ -25,6 +25,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all drafts.</summary>
+        /// <remarks>Feature level 87: drafts APIs (list/create/edit/delete) were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details, drafts).</returns>
         public async Task<(bool success, string details, List<DraftObject> drafts)> TryGetAll()
         {
@@ -48,6 +49,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Creates drafts.</summary>
         /// <param name="draftsJson">JSON array of draft objects.</param>
+        /// <remarks>Feature level 87: drafts creation endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryCreate(string draftsJson)
         {
@@ -76,6 +78,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Edits a draft.</summary>
         /// <param name="draftId">The draft ID.</param>
         /// <param name="draftJson">JSON representation of the draft.</param>
+        /// <remarks>Feature level 87: draft edit endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryEdit(int draftId, string draftJson)
         {
@@ -103,6 +106,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deletes a draft.</summary>
         /// <param name="draftId">The draft ID.</param>
+        /// <remarks>Feature level 87: draft delete endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDelete(int draftId)
         {

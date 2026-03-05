@@ -24,6 +24,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all saved snippets.</summary>
+        /// <remarks>Feature level 297: saved snippets CRUD APIs were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details, snippets).</returns>
         public async Task<(bool success, string details, List<SavedSnippetObject> snippets)> TryGetAll()
         {
@@ -48,6 +49,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Creates a saved snippet.</summary>
         /// <param name="title">The snippet title.</param>
         /// <param name="content">The snippet content.</param>
+        /// <remarks>Feature level 297: saved snippet creation endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryCreate(string title, string content)
         {
@@ -78,6 +80,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="snippetId">The snippet ID.</param>
         /// <param name="title">(Optional) New title.</param>
         /// <param name="content">(Optional) New content.</param>
+        /// <remarks>Feature level 368: saved snippet edit endpoint and related update events were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryEdit(int snippetId, string title = null, string content = null)
         {
@@ -105,6 +108,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deletes a saved snippet.</summary>
         /// <param name="snippetId">The snippet ID.</param>
+        /// <remarks>Feature level 297: saved snippet deletion endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDelete(int snippetId)
         {

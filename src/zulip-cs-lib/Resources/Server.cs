@@ -20,6 +20,10 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets server settings.</summary>
+        /// <remarks>
+        /// Feature level 116: this endpoint exposes the server feature-level contract used by API clients to gate behavior.
+        /// The changelog and this library both assume callers read this value before using newer endpoint parameters.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, zulipVersion, featureLevel).</returns>
         public async Task<(bool success, string details, string zulipVersion, int? featureLevel)> TryGetSettings()
         {

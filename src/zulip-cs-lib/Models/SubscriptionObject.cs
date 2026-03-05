@@ -3,6 +3,10 @@ using System.Text.Json.Serialization;
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip subscription.</summary>
+    /// <remarks>
+    /// Feature levels 392, 404, and 441 expanded subscription objects with newer policy and group-setting fields.
+    /// This model keeps a stable subset of commonly consumed subscription properties.
+    /// </remarks>
     public class SubscriptionObject
     {
         /// <summary>Gets or sets the stream ID.</summary>

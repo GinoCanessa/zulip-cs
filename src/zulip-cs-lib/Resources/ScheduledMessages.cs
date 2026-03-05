@@ -25,6 +25,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all scheduled messages.</summary>
+        /// <remarks>Feature level 181: scheduled-message listing endpoint became available.</remarks>
         /// <returns>An asynchronous result that yields (success, details, scheduledMessages).</returns>
         public async Task<(bool success, string details, List<ScheduledMessageObject> scheduledMessages)> TryGetAll()
         {
@@ -52,6 +53,9 @@ namespace zulip_cs_lib.Resources
         /// <param name="content">The message content.</param>
         /// <param name="scheduledDeliveryTimestamp">Unix timestamp for delivery.</param>
         /// <param name="topic">(Optional) The topic (required for channel messages).</param>
+        /// <remarks>
+        /// Feature level 370: the special "(no topic)" value is interpreted as an empty topic name.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, scheduledMessageId).</returns>
         public async Task<(bool success, string details, int scheduledMessageId)> TryCreate(
             string type,
@@ -93,6 +97,9 @@ namespace zulip_cs_lib.Resources
         /// <param name="content">(Optional) New content.</param>
         /// <param name="scheduledDeliveryTimestamp">(Optional) New delivery timestamp.</param>
         /// <param name="topic">(Optional) New topic.</param>
+        /// <remarks>
+        /// Feature level 370: updates using "(no topic)" map to an empty topic name.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryEdit(
             int scheduledMessageId,
@@ -125,6 +132,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deletes a scheduled message.</summary>
         /// <param name="scheduledMessageId">The scheduled message ID.</param>
+        /// <remarks>Feature level 173: scheduled-message deletion endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDelete(int scheduledMessageId)
         {

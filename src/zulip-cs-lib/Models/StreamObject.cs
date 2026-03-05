@@ -3,6 +3,10 @@ using System.Text.Json.Serialization;
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip stream/channel.</summary>
+    /// <remarks>
+    /// Feature levels 394 and 441 added richer stream metadata in API responses (for example subscriber counts and permission-group settings).
+    /// This model intentionally captures the core stream fields used by the library.
+    /// </remarks>
     public class StreamObject
     {
         /// <summary>Gets or sets the stream ID.</summary>

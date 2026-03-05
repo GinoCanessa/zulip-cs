@@ -24,6 +24,10 @@ namespace zulip_cs_lib.Resources
         /// <param name="eventTypes">(Optional) JSON array of event type strings.</param>
         /// <param name="narrow">(Optional) Narrow filter as JSON.</param>
         /// <param name="allPublicStreams">(Optional) Include all public streams.</param>
+        /// <remarks>
+        /// Feature level 468: register responses gained device-oriented updates (for example, device data changes and push-device payload updates).
+        /// Clients should rely on feature-level checks when consuming evolving register payload fields.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, queueId, lastEventId).</returns>
         public async Task<(bool success, string details, string queueId, int lastEventId)> TryRegisterQueue(
             string eventTypes = null,
@@ -59,6 +63,9 @@ namespace zulip_cs_lib.Resources
         /// <param name="queueId">The queue ID.</param>
         /// <param name="lastEventId">The last event ID received.</param>
         /// <param name="dontBlock">(Optional) Whether to return immediately.</param>
+        /// <remarks>
+        /// Feature level 468: the events stream includes newer device-related event traffic used to keep client device state synchronized.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, events).</returns>
         public async Task<(bool success, string details, List<EventObject> events)> TryGetEvents(
             string queueId,

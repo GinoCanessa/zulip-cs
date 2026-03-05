@@ -4,6 +4,10 @@ using System.Text.Json.Serialization;
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip message.</summary>
+    /// <remarks>
+    /// Feature level 365 refined edit/move metadata semantics for message payloads.
+    /// Feature level 327 adjusted <c>recipient_id</c> behavior for incoming 1:1 direct messages.
+    /// </remarks>
     public class MessageObject
     {
         /// <summary>Gets or sets the message ID.</summary>
@@ -19,6 +23,7 @@ namespace zulip_cs_lib.Models
         public string Content { get; set; }
 
         /// <summary>Gets or sets the recipient ID.</summary>
+        /// <remarks>Feature level 327 aligned incoming direct-message recipient IDs with outgoing-conversation semantics.</remarks>
         [JsonPropertyName("recipient_id")]
         public int RecipientId { get; set; }
 

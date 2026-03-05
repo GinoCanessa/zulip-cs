@@ -21,6 +21,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all linkifiers.</summary>
+        /// <remarks>Feature level 54: linkifier listing endpoint is part of the long-standing organization settings API.</remarks>
         /// <returns>An asynchronous result that yields (success, details, linkifiers).</returns>
         public async Task<(bool success, string details, List<LinkifierObject> linkifiers)> TryGetLinkifiers()
         {
@@ -45,6 +46,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Adds a linkifier.</summary>
         /// <param name="pattern">The regex pattern.</param>
         /// <param name="urlTemplate">The URL template.</param>
+        /// <remarks>Feature level 176: linkifier create/update APIs were formalized for realm filters.</remarks>
         /// <returns>An asynchronous result that yields (success, details, filterId).</returns>
         public async Task<(bool success, string details, int filterId)> TryAddLinkifier(string pattern, string urlTemplate)
         {
@@ -76,6 +78,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="filterId">The filter ID.</param>
         /// <param name="pattern">The new regex pattern.</param>
         /// <param name="urlTemplate">The new URL template.</param>
+        /// <remarks>Feature level 176: linkifier update endpoint is tracked as part of realm filter APIs.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdateLinkifier(int filterId, string pattern, string urlTemplate)
         {
@@ -125,6 +128,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all custom emoji.</summary>
+        /// <remarks>Feature level 113: custom emoji listing endpoint is tracked in API feature history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, emoji).</returns>
         public async Task<(bool success, string details, Dictionary<string, EmojiObject> emoji)> TryGetCustomEmoji()
         {
@@ -148,6 +152,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deactivates a custom emoji.</summary>
         /// <param name="emojiName">The emoji name.</param>
+        /// <remarks>Feature level 190: custom emoji deactivation endpoint is tracked in changelog history.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDeactivateCustomEmoji(string emojiName)
         {
@@ -169,6 +174,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets custom profile fields.</summary>
+        /// <remarks>Feature level 455: profile fields gained <c>use_for_user_matching</c> in API payloads.</remarks>
         /// <returns>An asynchronous result that yields (success, details, fields).</returns>
         public async Task<(bool success, string details, List<ProfileFieldObject> fields)> TryGetProfileFields()
         {
@@ -194,6 +200,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="fieldType">The field type.</param>
         /// <param name="name">The field name.</param>
         /// <param name="hint">(Optional) The field hint.</param>
+        /// <remarks>Feature level 455: created profile field objects include newer matching metadata fields.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryCreateProfileField(int fieldType, string name, string hint = null)
         {

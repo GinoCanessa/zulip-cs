@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a scheduled message.</summary>
+    /// <remarks>Feature level 370 updated scheduled-message topic handling so "(no topic)" maps to an empty topic name.</remarks>
     public class ScheduledMessageObject
     {
         /// <summary>Gets or sets the scheduled message ID.</summary>

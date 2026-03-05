@@ -24,6 +24,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all reminders.</summary>
+        /// <remarks>Feature level 399: reminder listing/deletion endpoints were added.</remarks>
         /// <returns>An asynchronous result that yields (success, details, reminders).</returns>
         public async Task<(bool success, string details, List<ReminderObject> reminders)> TryGetAll()
         {
@@ -48,6 +49,10 @@ namespace zulip_cs_lib.Resources
         /// <summary>Creates a reminder.</summary>
         /// <param name="messageId">The message ID to remind about.</param>
         /// <param name="scheduledDeliveryTimestamp">Unix timestamp for reminder.</param>
+        /// <remarks>
+        /// Feature level 415: reminder creation gained optional <c>note</c> support.
+        /// This wrapper currently sends the core scheduling fields.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryCreate(int messageId, long scheduledDeliveryTimestamp)
         {
@@ -76,6 +81,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deletes a reminder.</summary>
         /// <param name="reminderId">The reminder ID.</param>
+        /// <remarks>Feature level 399: reminder deletion endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDelete(int reminderId)
         {

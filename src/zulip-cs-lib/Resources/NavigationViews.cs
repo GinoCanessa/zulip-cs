@@ -24,6 +24,9 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Gets all navigation views.</summary>
+        /// <remarks>
+        /// Feature level 390: introduced navigation views APIs and corresponding event types.
+        /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, views).</returns>
         public async Task<(bool success, string details, List<NavigationViewObject> views)> TryGetAll()
         {
@@ -47,6 +50,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Creates a navigation view.</summary>
         /// <param name="name">The view name.</param>
+        /// <remarks>Feature level 390: added the create navigation-view endpoint.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryCreate(string name)
         {
@@ -75,6 +79,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Updates a navigation view.</summary>
         /// <param name="viewId">The view ID.</param>
         /// <param name="name">(Optional) New name.</param>
+        /// <remarks>Feature level 390: added the update navigation-view endpoint.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryUpdate(int viewId, string name = null)
         {
@@ -101,6 +106,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Deletes a navigation view.</summary>
         /// <param name="viewId">The view ID.</param>
+        /// <remarks>Feature level 390: added the delete navigation-view endpoint.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string details)> TryDelete(int viewId)
         {
