@@ -10,7 +10,6 @@
     <PackageTags>Zulip;CSharp;Library;</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/GinoCanessa/zulip-cs</PackageProjectUrl>
     <RepositoryUrl>https://github.com/GinoCanessa/zulip-cs</RepositoryUrl>
   </PropertyGroup>
