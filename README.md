@@ -4,6 +4,9 @@ Note that this package is in the EARLY development stages and should not be used
 
 # Zulip C# Library
 
+[![Tests](https://github.com/GinoCanessa/zulip-cs/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/GinoCanessa/zulip-cs/actions/workflows/build-and-test.yaml)
+[![Publish dotnet library](https://img.shields.io/nuget/v/zulip-cs-lib.svg)](https://github.com/GinoCanessa/zulip-cs/actions/workflows/nuget-library.yaml)
+
 `zulip-cs-lib` is a C# library for the [Zulip](http://zulip.com) REST API. It targets **net8.0**, **net9.0**, and **net10.0**, uses **System.Text.Json** for serialization, and takes as few dependencies as possible.
 
 Code was developed using several existing projects for guidance and inspiration:
