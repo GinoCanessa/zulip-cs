@@ -4,19 +4,25 @@
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <LangVersion>14</LangVersion>
     <RootNamespace>zulip_cs_lib</RootNamespace>
-    <Version>0.0.1-beta.2</Version>
+    <Version>0.0.1-beta.3</Version>
     <Authors>Gino Canessa</Authors>
     <Company></Company>
+    <PackageTags>Zulip;CSharp;Library;</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/GinoCanessa/zulip-cs</PackageProjectUrl>
     <RepositoryUrl>https://github.com/GinoCanessa/zulip-cs</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\LICENSE">
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\">
       <Pack>True</Pack>
       <PackagePath></PackagePath>
     </None>
+		<None Include="..\..\README.md" Pack="true" PackagePath="\">
+			<Link>README.md</Link>
+		</None>
   </ItemGroup>
 
 </Project>
