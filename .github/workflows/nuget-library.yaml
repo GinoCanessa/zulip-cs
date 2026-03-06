@@ -28,3 +28,4 @@ jobs:
         dotnet restore src/zulip-cs-lib/zulip-cs-lib.csproj
         dotnet pack -c Release ./src/zulip-cs-lib/zulip-cs-lib.csproj -o ./nupkg
         dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.GINOC_NUGET }} --source https://api.nuget.org/v3/index.json
+
