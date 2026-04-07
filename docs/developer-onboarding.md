@@ -20,7 +20,7 @@ Top-level:
 
 ## 3. Build and Test Cycle
 
-Run all operations from `src/`:
+Run all operations from the repository root (where `zulip-cs.sln` lives):
 
 ```bash
 dotnet restore
@@ -84,5 +84,5 @@ CLI lookup behavior:
 - Add/update corresponding documentation in this `docs/` folder.
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4

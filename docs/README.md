@@ -26,7 +26,7 @@ This folder contains onboarding and technical reference documentation for contri
 
 ## Quick Start
 
-From the solution directory (`src/`):
+From the repository root (where `zulip-cs.sln` lives):
 
 ```bash
 dotnet restore
@@ -35,5 +35,5 @@ dotnet test
 ```
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4

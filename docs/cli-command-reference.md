@@ -170,5 +170,5 @@ Fetch read receipt user IDs as JSON.
 - Failure path: command writes to stderr and sets non-zero exit code.
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4

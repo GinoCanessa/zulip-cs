@@ -37,5 +37,5 @@ Current CLI command focus is message-centric workflows:
 - Authentication in normal flows is API key based (Basic auth header).
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4
