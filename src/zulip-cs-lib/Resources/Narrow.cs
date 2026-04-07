@@ -13,8 +13,8 @@ namespace zulip_cs_lib.Resources
         /// <summary>The operator.</summary>
         private NarrowOperator _operator;
 
-        /// <summary>The operand value.</summary>
-        private string _operand;
+        /// <summary>The operand value (string, long, or long[] depending on the narrow type).</summary>
+        private object _operand;
 
         /// <summary>Whether this narrow is negated.</summary>
         private bool _negated;
@@ -89,14 +89,36 @@ namespace zulip_cs_lib.Resources
             Mentions,
         }
 
-        /// <summary>Initializes a new instance of the Narrow class.</summary>
+        /// <summary>Initializes a new instance of the Narrow class with a string operand.</summary>
         /// <param name="op">The operator.</param>
-        /// <param name="operand">(Optional) The operand value.</param>
+        /// <param name="operand">(Optional) The operand value (e.g., channel name, topic, email).</param>
         /// <param name="negated">(Optional) Whether this narrow is negated.</param>
         public Narrow(NarrowOperator op, string operand = null, bool negated = false)
         {
             _operator = op;
             _operand = operand;
+            _negated = negated;
+        }
+
+        /// <summary>Initializes a new instance of the Narrow class with a numeric operand (e.g., channel ID, user ID, message ID).</summary>
+        /// <param name="op">The operator.</param>
+        /// <param name="operand">The numeric operand value.</param>
+        /// <param name="negated">(Optional) Whether this narrow is negated.</param>
+        public Narrow(NarrowOperator op, long operand, bool negated = false)
+        {
+            _operator = op;
+            _operand = operand;
+            _negated = negated;
+        }
+
+        /// <summary>Initializes a new instance of the Narrow class with an array of numeric operands (e.g., multiple user IDs for DM).</summary>
+        /// <param name="op">The operator.</param>
+        /// <param name="operands">The numeric operand values.</param>
+        /// <param name="negated">(Optional) Whether this narrow is negated.</param>
+        public Narrow(NarrowOperator op, long[] operands, bool negated = false)
+        {
+            _operator = op;
+            _operand = operands;
             _negated = negated;
         }
 
@@ -132,9 +154,9 @@ namespace zulip_cs_lib.Resources
             }
         }
 
-        /// <summary>Gets the operand string for the API.</summary>
-        /// <returns>The operand string.</returns>
-        private string GetOperandString()
+        /// <summary>Gets the operand value for the API.</summary>
+        /// <returns>The operand value (string, long, or long[]).</returns>
+        private object GetOperandValue()
         {
             switch (_operator)
             {
@@ -161,7 +183,7 @@ namespace zulip_cs_lib.Resources
             var obj = new Dictionary<string, object>
             {
                 { "operator", GetOperatorString() },
-                { "operand", GetOperandString() },
+                { "operand", GetOperandValue() },
                 { "negated", _negated }
             };
 
@@ -185,7 +207,7 @@ namespace zulip_cs_lib.Resources
                 items.Add(new Dictionary<string, object>
                 {
                     { "operator", narrow.GetOperatorString() },
-                    { "operand", narrow.GetOperandString() },
+                    { "operand", narrow.GetOperandValue() },
                     { "negated", narrow._negated }
                 });
             }
