@@ -1,17 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\common.props" />
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <LangVersion>14</LangVersion>
     <RootNamespace>zulip_cs_lib</RootNamespace>
-    <Version>0.0.1-beta.3</Version>
-    <Authors>Gino Canessa</Authors>
-    <Company></Company>
     <PackageTags>Zulip;CSharp;Library;</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/GinoCanessa/zulip-cs</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/GinoCanessa/zulip-cs</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

@@ -175,5 +175,95 @@ namespace zulip_set_lib.tests
             string json = Narrow.ToJsonArray();
             Assert.Equal("[]", json);
         }
+
+        [Fact]
+        public void Narrow_Channel_IntegerId_ToJson()
+        {
+            Narrow narrow = new Narrow(Narrow.NarrowOperator.Channel, 180804L);
+            string json = narrow.ToJson();
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                Assert.Equal("channel", doc.RootElement.GetProperty("operator").GetString());
+                Assert.Equal(JsonValueKind.Number, doc.RootElement.GetProperty("operand").ValueKind);
+                Assert.Equal(180804, doc.RootElement.GetProperty("operand").GetInt64());
+            }
+        }
+
+        [Fact]
+        public void Narrow_Channel_StringName_ToJson()
+        {
+            Narrow narrow = new Narrow(Narrow.NarrowOperator.Channel, "general");
+            string json = narrow.ToJson();
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                Assert.Equal("channel", doc.RootElement.GetProperty("operator").GetString());
+                Assert.Equal(JsonValueKind.String, doc.RootElement.GetProperty("operand").ValueKind);
+                Assert.Equal("general", doc.RootElement.GetProperty("operand").GetString());
+            }
+        }
+
+        [Fact]
+        public void Narrow_Sender_IntegerId_ToJson()
+        {
+            Narrow narrow = new Narrow(Narrow.NarrowOperator.Sender, 1234L);
+            string json = narrow.ToJson();
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                Assert.Equal("sender", doc.RootElement.GetProperty("operator").GetString());
+                Assert.Equal(JsonValueKind.Number, doc.RootElement.GetProperty("operand").ValueKind);
+                Assert.Equal(1234, doc.RootElement.GetProperty("operand").GetInt64());
+            }
+        }
+
+        [Fact]
+        public void Narrow_Dm_IntegerArrayIds_ToJson()
+        {
+            Narrow narrow = new Narrow(Narrow.NarrowOperator.Dm, new long[] { 1234, 5678 });
+            string json = narrow.ToJson();
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                Assert.Equal("dm", doc.RootElement.GetProperty("operator").GetString());
+                Assert.Equal(JsonValueKind.Array, doc.RootElement.GetProperty("operand").ValueKind);
+                Assert.Equal(2, doc.RootElement.GetProperty("operand").GetArrayLength());
+                Assert.Equal(1234, doc.RootElement.GetProperty("operand")[0].GetInt64());
+                Assert.Equal(5678, doc.RootElement.GetProperty("operand")[1].GetInt64());
+            }
+        }
+
+        [Fact]
+        public void Narrow_Id_IntegerId_ToJson()
+        {
+            Narrow narrow = new Narrow(Narrow.NarrowOperator.Id, 12345L);
+            string json = narrow.ToJson();
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                Assert.Equal("id", doc.RootElement.GetProperty("operator").GetString());
+                Assert.Equal(JsonValueKind.Number, doc.RootElement.GetProperty("operand").ValueKind);
+                Assert.Equal(12345, doc.RootElement.GetProperty("operand").GetInt64());
+            }
+        }
+
+        [Fact]
+        public void Narrow_ToJsonArray_MixedOperandTypes()
+        {
+            string json = Narrow.ToJsonArray(
+                new Narrow(Narrow.NarrowOperator.Channel, 180804L),
+                new Narrow(Narrow.NarrowOperator.Topic, "greetings"));
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
+                Assert.Equal(2, doc.RootElement.GetArrayLength());
+                Assert.Equal(JsonValueKind.Number, doc.RootElement[0].GetProperty("operand").ValueKind);
+                Assert.Equal(180804, doc.RootElement[0].GetProperty("operand").GetInt64());
+                Assert.Equal(JsonValueKind.String, doc.RootElement[1].GetProperty("operand").ValueKind);
+                Assert.Equal("greetings", doc.RootElement[1].GetProperty("operand").GetString());
+            }
+        }
     }
 }

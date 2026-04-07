@@ -1,0 +1,27 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+    <!-- Solution-wide properties for NuGet packaging -->
+    <PropertyGroup>
+        <LangVersion>14.0</LangVersion>
+        <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+        <Version>0.0.1-beta.4</Version>
+		<Authors>GinoCanessa</Authors>
+		<Company>Gino Canessa</Company>
+        <Copyright>Copyright 2026+</Copyright>
+		<RepositoryType>git</RepositoryType>
+        <RepositoryUrl>https://github.com/GinoCanessa/zulip-cs</RepositoryUrl>
+		<NeutralLanguage>en</NeutralLanguage>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\..\LICENSE" Pack="true" PackagePath="\">
+			<Link>LICENSE</Link>
+		</None>
+		<None Include="..\..\README.md" Pack="true" PackagePath="\">
+			<Link>README.md</Link>
+		</None>
+	</ItemGroup>
+
+</Project>
