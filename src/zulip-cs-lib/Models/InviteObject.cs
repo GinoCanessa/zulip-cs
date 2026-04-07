@@ -15,7 +15,7 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the invited email.</summary>
         [JsonPropertyName("email")]
-        public string Email { get; set; }
+        public string? Email { get; set; }
 
         /// <summary>Gets or sets whether the invite is a multiuse link.</summary>
         [JsonPropertyName("is_multiuse")]
@@ -23,6 +23,6 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the link URL.</summary>
         [JsonPropertyName("link_url")]
-        public string LinkUrl { get; set; }
+        public string? LinkUrl { get; set; }
     }
 }

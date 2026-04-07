@@ -62,7 +62,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Events.TryGetEvents("abc123:0", -1, dontBlock: true);
             Assert.True(actual.success, actual.details);
-            Assert.Equal(2, actual.events.Count);
+            Assert.Equal(2, actual.events!.Count);
         }
 
         [Fact]

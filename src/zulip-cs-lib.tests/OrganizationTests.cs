@@ -25,7 +25,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Organization.TryGetLinkifiers();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.linkifiers);
+            Assert.Single(actual.linkifiers!);
         }
 
         [Fact]
@@ -91,8 +91,8 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Organization.TryGetCustomEmoji();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.emoji);
-            Assert.True(actual.emoji.ContainsKey("smile"));
+            Assert.Single(actual.emoji!);
+            Assert.True(actual.emoji!.ContainsKey("smile"));
         }
 
         [Fact]
@@ -125,7 +125,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Organization.TryGetProfileFields();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.fields);
+            Assert.Single(actual.fields!);
         }
 
         [Fact]

@@ -14,12 +14,12 @@ namespace zulip_cs_lib.Resources
         private const string _endpoint = "api/v1/drafts";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Drafts class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Drafts(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -27,7 +27,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all drafts.</summary>
         /// <remarks>Feature level 87: drafts APIs (list/create/edit/delete) were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details, drafts).</returns>
-        public async Task<(bool success, string details, List<DraftObject> drafts)> TryGetAll()
+        public async Task<(bool success, string? details, List<DraftObject>? drafts)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
@@ -44,14 +44,14 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.drafts;
+            return result.drafts!;
         }
 
         /// <summary>Creates drafts.</summary>
         /// <param name="draftsJson">JSON array of draft objects.</param>
         /// <remarks>Feature level 87: drafts creation endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryCreate(string draftsJson)
+        public async Task<(bool success, string? details)> TryCreate(string draftsJson)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -80,7 +80,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="draftJson">JSON representation of the draft.</param>
         /// <remarks>Feature level 87: draft edit endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryEdit(int draftId, string draftJson)
+        public async Task<(bool success, string? details)> TryEdit(int draftId, string draftJson)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -108,7 +108,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="draftId">The draft ID.</param>
         /// <remarks>Feature level 87: draft delete endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDelete(int draftId)
+        public async Task<(bool success, string? details)> TryDelete(int draftId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{draftId}", null);
 

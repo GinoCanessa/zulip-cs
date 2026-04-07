@@ -34,7 +34,7 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+            (bool success, string? details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
                 "message", 
                 "user1@example.org");
 
@@ -68,7 +68,7 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+            (bool success, string? details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
                 "message",
                 "user1@example.org",
                 "user2@example.org");
@@ -103,7 +103,7 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+            (bool success, string? details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
                 "message",
                 1);
 
@@ -137,7 +137,7 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+            (bool success, string? details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
                 "message",
                 1,
                 2);
@@ -172,7 +172,7 @@ namespace zulip_set_lib.tests
 
             Assert.True(success, "Failed to get mocked ZulipClient");
 
-            (bool success, string details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
+            (bool success, string? details, ulong messageId) actual = await zulipClient.Messages.TrySendPrivate(
                 "message",
                 "invalid@example.org");
 

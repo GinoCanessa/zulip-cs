@@ -15,26 +15,26 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the previous content.</summary>
         [JsonPropertyName("prev_content")]
-        public string PrevContent { get; set; }
+        public string? PrevContent { get; set; }
 
         /// <summary>Gets or sets the previous rendered content.</summary>
         [JsonPropertyName("prev_rendered_content")]
-        public string PrevRenderedContent { get; set; }
+        public string? PrevRenderedContent { get; set; }
 
         /// <summary>Gets or sets the previous topic.</summary>
         [JsonPropertyName("prev_topic")]
-        public string PrevTopic { get; set; }
+        public string? PrevTopic { get; set; }
 
         /// <summary>Gets or sets the topic.</summary>
         [JsonPropertyName("topic")]
-        public string Topic { get; set; }
+        public string? Topic { get; set; }
 
         /// <summary>Gets or sets the content.</summary>
         [JsonPropertyName("content")]
-        public string Content { get; set; }
+        public string? Content { get; set; }
 
         /// <summary>Gets or sets the rendered content.</summary>
         [JsonPropertyName("rendered_content")]
-        public string RenderedContent { get; set; }
+        public string? RenderedContent { get; set; }
     }
 }

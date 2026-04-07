@@ -12,6 +12,6 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the topic name.</summary>
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string? Name { get; set; }
     }
 }

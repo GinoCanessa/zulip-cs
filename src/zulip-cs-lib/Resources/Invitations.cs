@@ -14,12 +14,12 @@ namespace zulip_cs_lib.Resources
         private const string _endpoint = "api/v1/invites";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Invitations class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Invitations(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -27,7 +27,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all invitations.</summary>
         /// <remarks>Feature level 267: invitation listing endpoint behavior was documented in changelog tracking.</remarks>
         /// <returns>An asynchronous result that yields (success, details, invites).</returns>
-        public async Task<(bool success, string details, List<InviteObject> invites)> TryGetAll()
+        public async Task<(bool success, string? details, List<InviteObject>? invites)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
@@ -44,7 +44,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.invites;
+            return result.invites!;
         }
 
         /// <summary>Sends invitations.</summary>
@@ -56,7 +56,7 @@ namespace zulip_cs_lib.Resources
         /// This wrapper keeps the core invite parameters and remains compatible.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TrySend(
+        public async Task<(bool success, string? details)> TrySend(
             string inviteeEmails,
             string streamIds,
             int? inviteAs = null)
@@ -91,7 +91,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="inviteAs">(Optional) Role for invitees.</param>
         /// <remarks>Feature level 416: multiuse invitation links gained welcome-message customization support.</remarks>
         /// <returns>An asynchronous result that yields (success, details, linkUrl).</returns>
-        public async Task<(bool success, string details, string linkUrl)> TryCreateLink(
+        public async Task<(bool success, string? details, string? linkUrl)> TryCreateLink(
             string streamIds,
             int? inviteAs = null)
         {
@@ -116,13 +116,13 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryCreateLink(streamIds, inviteAs);
             if (!result.success) throw new Exception(result.details);
-            return result.linkUrl;
+            return result.linkUrl!;
         }
 
         /// <summary>Resends an invitation.</summary>
         /// <param name="inviteId">The invitation ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryResend(int inviteId)
+        public async Task<(bool success, string? details)> TryResend(int inviteId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_endpoint}/{inviteId}/resend", new Dictionary<string, string>());
 
@@ -144,7 +144,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Revokes an invitation.</summary>
         /// <param name="inviteId">The invitation ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryRevoke(int inviteId)
+        public async Task<(bool success, string? details)> TryRevoke(int inviteId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{inviteId}", null);
 
@@ -167,7 +167,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="inviteId">The multiuse invite ID.</param>
         /// <remarks>Feature level 209: multiuse invite-link revocation endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryRevokeLink(int inviteId)
+        public async Task<(bool success, string? details)> TryRevokeLink(int inviteId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/multiuse/{inviteId}", null);
 

@@ -14,7 +14,7 @@ namespace zulip_set_lib.tests
             string contents = "";
             string sectionName = "TEST";
 
-            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string> data);
+            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string>? data);
 
             Assert.False(result, "Empty contents should return false");
         }
@@ -25,10 +25,10 @@ namespace zulip_set_lib.tests
             string contents = "[TEST]\n\n[another]\n";
             string sectionName = "TEST";
 
-            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string> data);
+            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string>? data);
 
             Assert.True(result, "Empty section should return true");
-            Assert.Empty(data);
+            Assert.Empty(data!);
         }
 
         [Fact]
@@ -37,12 +37,12 @@ namespace zulip_set_lib.tests
             string contents = "[TEST]\nvalue=valid\n[another]\n";
             string sectionName = "TEST";
 
-            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string> data);
+            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string>? data);
 
             Assert.True(result, "Empty section should return true");
-            Assert.Single(data);
-            Assert.Contains<string>("value", data.Keys);
-            Assert.Contains<string>("valid", data.Values);
+            Assert.Single(data!);
+            Assert.Contains<string>("value", data!.Keys);
+            Assert.Contains<string>("valid", data!.Values);
         }
 
         [Fact]
@@ -51,14 +51,14 @@ namespace zulip_set_lib.tests
             string contents = "[TEST]\nvalue=valid\nvalue2=alsoValid\n[another]\n";
             string sectionName = "TEST";
 
-            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string> data);
+            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string>? data);
 
             Assert.True(result, "Empty section should return true");
-            Assert.Equal(2, data.Count);
-            Assert.Contains<string>("value", data.Keys);
-            Assert.Contains<string>("value2", data.Keys);
-            Assert.Contains<string>("valid", data.Values);
-            Assert.Contains<string>("alsoValid", data.Values);
+            Assert.Equal(2, data!.Count);
+            Assert.Contains<string>("value", data!.Keys);
+            Assert.Contains<string>("value2", data!.Keys);
+            Assert.Contains<string>("valid", data!.Values);
+            Assert.Contains<string>("alsoValid", data!.Values);
         }
 
         [Fact]
@@ -67,14 +67,14 @@ namespace zulip_set_lib.tests
             string contents = "[TEST]\nvalue=valid\n#comment=ignored\nvalue2=alsoValid\n[another]\n";
             string sectionName = "TEST";
 
-            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string> data);
+            bool result = IniParser.TryGetSectionData(contents, sectionName, out Dictionary<string, string>? data);
 
             Assert.True(result, "Empty section should return true");
-            Assert.Equal(2, data.Count);
-            Assert.Contains<string>("value", data.Keys);
-            Assert.Contains<string>("value2", data.Keys);
-            Assert.Contains<string>("valid", data.Values);
-            Assert.Contains<string>("alsoValid", data.Values);
+            Assert.Equal(2, data!.Count);
+            Assert.Contains<string>("value", data!.Keys);
+            Assert.Contains<string>("value2", data!.Keys);
+            Assert.Contains<string>("valid", data!.Values);
+            Assert.Contains<string>("alsoValid", data!.Values);
         }
     }
 }

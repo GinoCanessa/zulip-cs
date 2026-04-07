@@ -11,11 +11,11 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the title.</summary>
         [JsonPropertyName("title")]
-        public string Title { get; set; }
+        public string? Title { get; set; }
 
         /// <summary>Gets or sets the content.</summary>
         [JsonPropertyName("content")]
-        public string Content { get; set; }
+        public string? Content { get; set; }
 
         /// <summary>Gets or sets the date created.</summary>
         [JsonPropertyName("date_created")]
@@ -47,10 +47,10 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the name.</summary>
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>Gets or sets the type.</summary>
         [JsonPropertyName("type")]
-        public string Type { get; set; }
+        public string? Type { get; set; }
     }
 }

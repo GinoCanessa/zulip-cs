@@ -62,14 +62,14 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>
         /// Initializes a new instance of the zulip_cs_lib.Resources.Messages class.
         /// </summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Messages(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -80,7 +80,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result.</returns>
         public async Task Delete(ulong messageId)
         {
-            (bool success, string details) result = await TryDelete(messageId);
+            (bool success, string? details) result = await TryDelete(messageId);
 
             if (!result.success)
             {
@@ -91,7 +91,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Try delete.</summary>
         /// <param name="messageId">Identifier for the message.</param>
         /// <returns>An asynchronous result that yields true if it succeeds, false if it fails.</returns>
-        public async Task<(bool success, string details)> TryDelete(ulong messageId)
+        public async Task<(bool success, string? details)> TryDelete(ulong messageId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_messageApiEndpoint}/{messageId}", null);
 
@@ -114,14 +114,14 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result.</returns>
         public async Task Edit(
             ulong messageId,
-            string content = null,
-            string topic = null,
+            string? content = null,
+            string? topic = null,
             int? moveToStreamId = null,
             EditPropagateMode propagateMode = EditPropagateMode.One,
             bool? sendNotificationToOldThread = null,
             bool? sendNotificationToNewThread = null)
         {
-            (bool success, string details) result = await TryEdit(
+            (bool success, string? details) result = await TryEdit(
                 messageId,
                 content,
                 topic,
@@ -146,10 +146,10 @@ namespace zulip_cs_lib.Resources
         /// <param name="sendNotificationToNewThread">(Optional) Whether to send notification to new thread.</param>
         /// <remarks>Feature level 443: detached-upload timestamps in update-message responses are in seconds, not milliseconds.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryEdit(
+        public async Task<(bool success, string? details)> TryEdit(
             ulong messageId,
-            string content = null,
-            string topic = null,
+            string? content = null,
+            string? topic = null,
             int? moveToStreamId = null,
             EditPropagateMode propagateMode = EditPropagateMode.One,
             bool? sendNotificationToOldThread = null,
@@ -169,7 +169,7 @@ namespace zulip_cs_lib.Resources
 
             if (moveToStreamId != null)
             {
-                data.Add("stream_id", moveToStreamId.ToString());
+                data.Add("stream_id", moveToStreamId.Value.ToString());
             }
 
             if (data.Count == 0)
@@ -222,10 +222,10 @@ namespace zulip_cs_lib.Resources
         public async Task AddEmoji(
             ulong messageId,
             string emojiName,
-            string emojiCode = null,
-            string reactionType = null)
+            string? emojiCode = null,
+            string? reactionType = null)
         {
-            (bool success, string details) result = await TryAddEmoji(
+            (bool success, string? details) result = await TryAddEmoji(
                 messageId,
                 emojiName,
                 emojiCode,
@@ -244,11 +244,11 @@ namespace zulip_cs_lib.Resources
         /// <param name="reactionType">(Optional) The reaction type.</param>
         /// <remarks>Feature level 354: reactions are supported in eligible unsubscribed private channels with group-based content access.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryAddEmoji(
+        public async Task<(bool success, string? details)> TryAddEmoji(
             ulong messageId,
             string emojiName,
-            string emojiCode = null,
-            string reactionType = null)
+            string? emojiCode = null,
+            string? reactionType = null)
         {
             if (string.IsNullOrEmpty(emojiName))
             {
@@ -289,11 +289,11 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result.</returns>
         public async Task RemoveEmoji(
             ulong messageId,
-            string emojiName = null,
-            string emojiCode = null,
-            string reactionType = null)
+            string? emojiName = null,
+            string? emojiCode = null,
+            string? reactionType = null)
         {
-            (bool success, string details) result = await TryRemoveEmoji(
+            (bool success, string? details) result = await TryRemoveEmoji(
                 messageId,
                 emojiName,
                 emojiCode,
@@ -312,11 +312,11 @@ namespace zulip_cs_lib.Resources
         /// <param name="reactionType">(Optional) The reaction type.</param>
         /// <remarks>Feature level 354: reaction removal follows the same expanded private-channel access model as adding reactions.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryRemoveEmoji(
+        public async Task<(bool success, string? details)> TryRemoveEmoji(
             ulong messageId,
-            string emojiName = null,
-            string emojiCode = null,
-            string reactionType = null)
+            string? emojiName = null,
+            string? emojiCode = null,
+            string? reactionType = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -357,7 +357,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>The posted message id.</returns>
         public async Task<ulong> SendPrivate(string message, params string[] userEmails)
         {
-            (bool success, string details, ulong messageId) result = await TrySendPrivate(message, userEmails);
+            (bool success, string? details, ulong messageId) result = await TrySendPrivate(message, userEmails);
 
             if (!result.success)
             {
@@ -372,7 +372,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="userEmails">A variable-length parameters list containing user email addresses.</param>
         /// <remarks>Feature level 370: for send-message APIs, the special "(no topic)" value is normalized to an empty topic name.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
-        public async Task<(bool success, string details, ulong messageId)> TrySendPrivate(
+        public async Task<(bool success, string? details, ulong messageId)> TrySendPrivate(
             string message,
             params string[] userEmails)
         {
@@ -380,7 +380,7 @@ namespace zulip_cs_lib.Resources
 
             if (response.Result == ZulipResponse.ZulipResultSuccess)
             {
-                return (true, null, (ulong)response.Id);
+                return (true, null, response.Id ?? 0);
             }
 
             return (false, "Messages.SendPrivate failed: " + response.GetFailureMessage(), 0);
@@ -393,7 +393,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result.</returns>
         public async Task<ulong> SendPrivate(string message, params int[] userIds)
         {
-            (bool success, string details, ulong messageId) result = await TrySendPrivate(message, userIds);
+            (bool success, string? details, ulong messageId) result = await TrySendPrivate(message, userIds);
 
             if (!result.success)
             {
@@ -408,13 +408,13 @@ namespace zulip_cs_lib.Resources
         /// <param name="userIds">A variable-length parameters list containing user ids.</param>
         /// <remarks>Feature level 370: send-message handling includes the normalized empty-topic behavior in unified message posting.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
-        public async Task<(bool success, string details, ulong messageId)> TrySendPrivate(string message, params int[] userIds)
+        public async Task<(bool success, string? details, ulong messageId)> TrySendPrivate(string message, params int[] userIds)
         {
             ZulipResponse response = await Send(message, null, ZulipMessageType.Direct, userIds);
 
             if (response.Result == ZulipResponse.ZulipResultSuccess)
             {
-                return (true, null, (ulong)response.Id);
+                return (true, null, response.Id ?? 0);
             }
 
             return (false, "Messages.SendPrivate failed: " + response.GetFailureMessage(), 0);
@@ -428,7 +428,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields the message ID.</returns>
         public async Task<ulong> SendStream(string message, string topic, params string[] streamNames)
         {
-            (bool success, string details, ulong messageId) result = await TrySendStream(message, topic, streamNames);
+            (bool success, string? details, ulong messageId) result = await TrySendStream(message, topic, streamNames);
 
             if (!result.success)
             {
@@ -444,7 +444,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamNames">A variable-length parameters list containing destination stream names.</param>
         /// <remarks>Feature level 370: the "(no topic)" placeholder is interpreted by Zulip as an empty topic name.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
-        public async Task<(bool success, string details, ulong messageId)> TrySendStream(
+        public async Task<(bool success, string? details, ulong messageId)> TrySendStream(
             string message,
             string topic,
             params string[] streamNames)
@@ -453,7 +453,7 @@ namespace zulip_cs_lib.Resources
 
             if (response.Result == ZulipResponse.ZulipResultSuccess)
             {
-                return (true, null, (ulong)response.Id);
+                return (true, null, response.Id ?? 0);
             }
 
             return (false, "Messages.SendStream failed: " + response.GetFailureMessage(), 0);
@@ -467,7 +467,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields the message ID.</returns>
         public async Task<ulong> SendStream(string message, string topic, params int[] streamIds)
         {
-            (bool success, string details, ulong messageId) result = await TrySendStream(message, topic, streamIds);
+            (bool success, string? details, ulong messageId) result = await TrySendStream(message, topic, streamIds);
 
             if (!result.success)
             {
@@ -483,13 +483,13 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamIds">A variable-length parameters list containing stream ids.</param>
         /// <remarks>Feature level 370: stream send semantics include normalized handling for empty topic names.</remarks>
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
-        public async Task<(bool success, string details, ulong messageId)> TrySendStream(string message, string topic, params int[] streamIds)
+        public async Task<(bool success, string? details, ulong messageId)> TrySendStream(string message, string topic, params int[] streamIds)
         {
             ZulipResponse response = await Send(message, topic, ZulipMessageType.Channel, streamIds);
 
             if (response.Result == ZulipResponse.ZulipResultSuccess)
             {
-                return (true, null, (ulong)response.Id);
+                return (true, null, response.Id ?? 0);
             }
 
             return (false, "Messages.SendStream failed: " + response.GetFailureMessage(), 0);
@@ -509,12 +509,12 @@ namespace zulip_cs_lib.Resources
         /// Feature level 445: date-based anchoring support was added in Zulip API for message queries.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, messages, foundNewest, foundOldest).</returns>
-        public async Task<(bool success, string details, List<MessageObject> messages, bool? foundNewest, bool? foundOldest)> TryGet(
+        public async Task<(bool success, string? details, List<MessageObject>? messages, bool? foundNewest, bool? foundOldest)> TryGet(
             GetAnchorMode anchorMode,
             ulong? anchorMessageId = null,
             int numBefore = 0,
             int numAfter = 0,
-            Narrow[] narrow = null,
+            Narrow[]? narrow = null,
             bool? clientGravatar = null,
             bool? applyMarkdown = null,
             bool? includeAnchor = null)
@@ -589,7 +589,7 @@ namespace zulip_cs_lib.Resources
             ulong? anchorMessageId = null,
             int numBefore = 0,
             int numAfter = 0,
-            Narrow[] narrow = null,
+            Narrow[]? narrow = null,
             bool? clientGravatar = null,
             bool? applyMarkdown = null,
             bool? includeAnchor = null)
@@ -601,7 +601,7 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
-            return result.messages;
+            return result.messages!;
         }
 
         /// <summary>Fetches a single message by ID.</summary>
@@ -609,7 +609,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="applyMarkdown">(Optional) Whether to apply markdown.</param>
         /// <remarks>Feature level 365: message objects include refined edit/move metadata semantics such as <c>last_moved_timestamp</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details, message, rawContent).</returns>
-        public async Task<(bool success, string details, MessageObject message, string rawContent)> TryGetSingle(
+        public async Task<(bool success, string? details, MessageObject? message, string? rawContent)> TryGetSingle(
             ulong messageId,
             bool? applyMarkdown = null)
         {
@@ -645,13 +645,13 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
-            return result.message;
+            return result.message!;
         }
 
         /// <summary>Renders a message to HTML.</summary>
         /// <param name="content">The message content to render.</param>
         /// <returns>An asynchronous result that yields (success, details, renderedHtml).</returns>
-        public async Task<(bool success, string details, string renderedHtml)> TryRender(string content)
+        public async Task<(bool success, string? details, string? renderedHtml)> TryRender(string content)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -680,7 +680,7 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
-            return result.renderedHtml;
+            return result.renderedHtml!;
         }
 
         /// <summary>Updates personal message flags.</summary>
@@ -689,7 +689,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="flag">The flag name (e.g., read, starred).</param>
         /// <remarks>Feature level 355: responses can include channels skipped for unread operations via <c>ignored_because_not_subscribed_channels</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUpdateFlags(
+        public async Task<(bool success, string? details)> TryUpdateFlags(
             ulong[] messageIds,
             FlagOperation operation,
             string flag)
@@ -733,7 +733,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="messageId">Identifier for the message.</param>
         /// <remarks>Feature level 334: history APIs support empty topic names via the <c>allow_empty_topic_name</c> parameter.</remarks>
         /// <returns>An asynchronous result that yields (success, details, history).</returns>
-        public async Task<(bool success, string details, List<MessageHistoryObject> history)> TryGetEditHistory(ulong messageId)
+        public async Task<(bool success, string? details, List<MessageHistoryObject>? history)> TryGetEditHistory(ulong messageId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_messageApiEndpoint}/{messageId}/history", null);
 
@@ -757,13 +757,13 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
-            return result.history;
+            return result.history!;
         }
 
         /// <summary>Marks all messages as read.</summary>
         /// <remarks>Feature level 211: mark-all-as-read endpoint was added to the API.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryMarkAllAsRead()
+        public async Task<(bool success, string? details)> TryMarkAllAsRead()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/mark_all_as_read", new Dictionary<string, string>());
 
@@ -790,7 +790,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Marks all messages in a stream as read.</summary>
         /// <param name="streamId">The stream ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryMarkStreamAsRead(int streamId)
+        public async Task<(bool success, string? details)> TryMarkStreamAsRead(int streamId)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -824,7 +824,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamId">The stream ID.</param>
         /// <param name="topicName">The topic name.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryMarkTopicAsRead(int streamId, string topicName)
+        public async Task<(bool success, string? details)> TryMarkTopicAsRead(int streamId, string topicName)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -860,7 +860,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="messageId">Identifier for the message.</param>
         /// <remarks>Feature level 360: read receipts for archived channels are available when channel permissions allow access.</remarks>
         /// <returns>An asynchronous result that yields (success, details, userIds).</returns>
-        public async Task<(bool success, string details, List<int> userIds)> TryGetReadReceipts(ulong messageId)
+        public async Task<(bool success, string? details, List<int>? userIds)> TryGetReadReceipts(ulong messageId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_messageApiEndpoint}/{messageId}/read_receipts", null);
 
@@ -884,7 +884,7 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
-            return result.userIds;
+            return result.userIds!;
         }
 
         /// <summary>Sends a message.</summary>
@@ -893,7 +893,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="type">The message type.</param>
         /// <param name="stringIds">User email addresses or stream names.</param>
         /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
-        private Task<ZulipResponse> Send(string message, string topic, ZulipMessageType type, params string[] stringIds)
+        private Task<ZulipResponse> Send(string message, string? topic, ZulipMessageType type, params string[] stringIds)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -906,7 +906,7 @@ namespace zulip_cs_lib.Resources
                     break;
                 case ZulipMessageType.Channel:
                     data.Add("type", "channel");
-                    data.Add("topic", topic);
+                    if (topic != null) data.Add("topic", topic);
                     break;
             }
 
@@ -922,7 +922,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="type">The message type.</param>
         /// <param name="intIds">User or stream ids.</param>
         /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
-        private async Task<ZulipResponse> Send(string message, string topic, ZulipMessageType type, params int[] intIds)
+        private async Task<ZulipResponse> Send(string message, string? topic, ZulipMessageType type, params int[] intIds)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -935,7 +935,7 @@ namespace zulip_cs_lib.Resources
                     break;
                 case ZulipMessageType.Channel:
                     data.Add("type", "channel");
-                    data.Add("topic", topic);
+                    if (topic != null) data.Add("topic", topic);
                     break;
             }
 

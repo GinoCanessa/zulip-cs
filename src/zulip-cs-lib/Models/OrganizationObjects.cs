@@ -11,11 +11,11 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the pattern.</summary>
         [JsonPropertyName("pattern")]
-        public string Pattern { get; set; }
+        public string? Pattern { get; set; }
 
         /// <summary>Gets or sets the URL template.</summary>
         [JsonPropertyName("url_template")]
-        public string UrlTemplate { get; set; }
+        public string? UrlTemplate { get; set; }
     }
 
     /// <summary>Represents a custom emoji.</summary>
@@ -23,15 +23,15 @@ namespace zulip_cs_lib.Models
     {
         /// <summary>Gets or sets the ID.</summary>
         [JsonPropertyName("id")]
-        public string Id { get; set; }
+        public string? Id { get; set; }
 
         /// <summary>Gets or sets the name.</summary>
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>Gets or sets the source URL.</summary>
         [JsonPropertyName("source_url")]
-        public string SourceUrl { get; set; }
+        public string? SourceUrl { get; set; }
 
         /// <summary>Gets or sets the author.</summary>
         [JsonPropertyName("author_id")]
@@ -51,11 +51,11 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the name.</summary>
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>Gets or sets the hint.</summary>
         [JsonPropertyName("hint")]
-        public string Hint { get; set; }
+        public string? Hint { get; set; }
 
         /// <summary>Gets or sets the type.</summary>
         [JsonPropertyName("type")]

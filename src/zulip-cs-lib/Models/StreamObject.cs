@@ -15,15 +15,15 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the name.</summary>
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>Gets or sets the description.</summary>
         [JsonPropertyName("description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>Gets or sets the rendered description.</summary>
         [JsonPropertyName("rendered_description")]
-        public string RenderedDescription { get; set; }
+        public string? RenderedDescription { get; set; }
 
         /// <summary>Gets or sets a value indicating whether this is invite only.</summary>
         [JsonPropertyName("invite_only")]

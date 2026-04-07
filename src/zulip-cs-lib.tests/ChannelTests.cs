@@ -27,7 +27,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Channels.TryGetAll();
             Assert.True(actual.success, actual.details);
-            Assert.Equal(2, actual.streams.Count);
+            Assert.Equal(2, actual.streams!.Count);
         }
 
         [Fact]
@@ -79,7 +79,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Channels.TryGetSubscriptions();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.subscriptions);
+            Assert.Single(actual.subscriptions!);
         }
 
         [Fact]
@@ -128,7 +128,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Channels.TryGetTopics(1);
             Assert.True(actual.success, actual.details);
-            Assert.Equal(2, actual.topics.Count);
+            Assert.Equal(2, actual.topics!.Count);
         }
 
         [Fact]
@@ -145,7 +145,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Channels.TryGetSubscribers(1);
             Assert.True(actual.success, actual.details);
-            Assert.Equal(3, actual.subscribers.Count);
+            Assert.Equal(3, actual.subscribers!.Count);
         }
 
         [Fact]

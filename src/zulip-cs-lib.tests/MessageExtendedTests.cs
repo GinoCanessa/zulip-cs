@@ -131,7 +131,7 @@ namespace zulip_set_lib.tests
                 numAfter: 0);
 
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.messages);
+            Assert.Single(actual.messages!);
             Assert.True(actual.foundNewest);
         }
 
@@ -160,7 +160,7 @@ namespace zulip_set_lib.tests
                 narrow: narrow);
 
             Assert.True(actual.success, actual.details);
-            Assert.Empty(actual.messages);
+            Assert.Empty(actual.messages!);
         }
 
         [Fact]
@@ -230,7 +230,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Messages.TryGetEditHistory(42);
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.history);
+            Assert.Single(actual.history!);
         }
 
         [Fact]
@@ -295,7 +295,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Messages.TryGetReadReceipts(42);
             Assert.True(actual.success, actual.details);
-            Assert.Equal(3, actual.userIds.Count);
+            Assert.Equal(3, actual.userIds!.Count);
         }
 
         [Fact]
