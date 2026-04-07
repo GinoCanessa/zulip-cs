@@ -14,12 +14,12 @@ namespace zulip_cs_lib.Resources
         private const string _usersApiEndpoint = "api/v1/users";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Users class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Users(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -27,7 +27,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets the current user.</summary>
         /// <remarks>Feature level 433: user objects added <c>is_imported_stub</c> in user payloads.</remarks>
         /// <returns>An asynchronous result that yields (success, details, user).</returns>
-        public async Task<(bool success, string details, UserObject user)> TryGetOwnUser()
+        public async Task<(bool success, string? details, UserObject? user)> TryGetOwnUser()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/me", null);
 
@@ -45,7 +45,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetOwnUser();
             if (!result.success) throw new Exception(result.details);
-            return result.user;
+            return result.user!;
         }
 
         /// <summary>Gets a user by ID.</summary>
@@ -55,7 +55,7 @@ namespace zulip_cs_lib.Resources
         /// Feature level 433: user payloads include imported-stub metadata.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, user).</returns>
-        public async Task<(bool success, string details, UserObject user)> TryGetUser(int userId)
+        public async Task<(bool success, string? details, UserObject? user)> TryGetUser(int userId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{userId}", null);
 
@@ -74,13 +74,13 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetUser(userId);
             if (!result.success) throw new Exception(result.details);
-            return result.user;
+            return result.user!;
         }
 
         /// <summary>Gets a user by email.</summary>
         /// <param name="email">The user email.</param>
         /// <returns>An asynchronous result that yields (success, details, user).</returns>
-        public async Task<(bool success, string details, UserObject user)> TryGetUserByEmail(string email)
+        public async Task<(bool success, string? details, UserObject? user)> TryGetUserByEmail(string email)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{email}", null);
 
@@ -99,13 +99,13 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetUserByEmail(email);
             if (!result.success) throw new Exception(result.details);
-            return result.user;
+            return result.user!;
         }
 
         /// <summary>Gets all users.</summary>
         /// <remarks>Feature level 437: user-list responses received compatibility corrections for specific client scenarios.</remarks>
         /// <returns>An asynchronous result that yields (success, details, members).</returns>
-        public async Task<(bool success, string details, List<UserObject> members)> TryGetAll()
+        public async Task<(bool success, string? details, List<UserObject>? members)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _usersApiEndpoint, null);
 
@@ -123,7 +123,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.members;
+            return result.members!;
         }
 
         /// <summary>Sets typing status.</summary>
@@ -134,12 +134,12 @@ namespace zulip_cs_lib.Resources
         /// <param name="topic">(Optional) The topic for channel typing notifications.</param>
         /// <remarks>Feature level 372: passing "(no topic)" is interpreted by the server as an empty topic name.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TrySetTypingStatus(
+        public async Task<(bool success, string? details)> TrySetTypingStatus(
             string op,
             int[] userIds,
             string type = "direct",
             int? streamId = null,
-            string topic = null)
+            string? topic = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -175,7 +175,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamId">(Optional) The stream ID.</param>
         /// <param name="topic">(Optional) The topic.</param>
         /// <returns>An asynchronous result.</returns>
-        public async Task SetTypingStatus(string op, int[] userIds, string type = "direct", int? streamId = null, string topic = null)
+        public async Task SetTypingStatus(string op, int[] userIds, string type = "direct", int? streamId = null, string? topic = null)
         {
             var result = await TrySetTypingStatus(op, userIds, type, streamId, topic);
             if (!result.success) throw new Exception(result.details);
@@ -186,7 +186,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="password">The password.</param>
         /// <param name="fullName">The full name.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryCreate(string email, string password, string fullName)
+        public async Task<(bool success, string? details)> TryCreate(string email, string password, string fullName)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -218,7 +218,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="role">(Optional) New role.</param>
         /// <remarks>Feature level 313: API supports <c>new_email</c> updates; this wrapper currently exposes full name and role updates.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUpdate(int userId, string fullName = null, int? role = null)
+        public async Task<(bool success, string? details)> TryUpdate(int userId, string? fullName = null, int? role = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -236,7 +236,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Updates a user (throwing version).</summary>
-        public async Task Update(int userId, string fullName = null, int? role = null)
+        public async Task Update(int userId, string? fullName = null, int? role = null)
         {
             var result = await TryUpdate(userId, fullName, role);
             if (!result.success) throw new Exception(result.details);
@@ -246,7 +246,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="userId">The user ID.</param>
         /// <remarks>Feature level 459: deactivation accepts an <c>actions</c> parameter for extra cleanup workflows.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDeactivate(int userId)
+        public async Task<(bool success, string? details)> TryDeactivate(int userId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_usersApiEndpoint}/{userId}", null);
 
@@ -268,7 +268,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Reactivates a user.</summary>
         /// <param name="userId">The user ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryReactivate(int userId)
+        public async Task<(bool success, string? details)> TryReactivate(int userId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_usersApiEndpoint}/{userId}/reactivate", new Dictionary<string, string>());
 
@@ -291,7 +291,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="userId">The user ID.</param>
         /// <remarks>Feature level 262: user-status retrieval endpoint is tracked in API history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, status).</returns>
-        public async Task<(bool success, string details, UserStatusObject status)> TryGetStatus(int userId)
+        public async Task<(bool success, string? details, UserStatusObject? status)> TryGetStatus(int userId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{userId}/status", null);
 
@@ -308,7 +308,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetStatus(userId);
             if (!result.success) throw new Exception(result.details);
-            return result.status;
+            return result.status!;
         }
 
         /// <summary>Updates the current user's status.</summary>
@@ -319,12 +319,12 @@ namespace zulip_cs_lib.Resources
         /// <param name="reactionType">(Optional) Reaction type.</param>
         /// <remarks>Feature level 148: own-status update endpoint is tracked in API history.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUpdateOwnStatus(
-            string statusText = null,
+        public async Task<(bool success, string? details)> TryUpdateOwnStatus(
+            string? statusText = null,
             bool? away = null,
-            string emojiName = null,
-            string emojiCode = null,
-            string reactionType = null)
+            string? emojiName = null,
+            string? emojiCode = null,
+            string? reactionType = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -345,7 +345,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Updates the current user's status (throwing version).</summary>
-        public async Task UpdateOwnStatus(string statusText = null, bool? away = null, string emojiName = null, string emojiCode = null, string reactionType = null)
+        public async Task UpdateOwnStatus(string? statusText = null, bool? away = null, string? emojiName = null, string? emojiCode = null, string? reactionType = null)
         {
             var result = await TryUpdateOwnStatus(statusText, away, emojiName, emojiCode, reactionType);
             if (!result.success) throw new Exception(result.details);
@@ -355,7 +355,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="idOrEmail">The user ID or email.</param>
         /// <remarks>Feature level 178: user and realm presence APIs were introduced and expanded in this period.</remarks>
         /// <returns>An asynchronous result that yields (success, details, presence).</returns>
-        public async Task<(bool success, string details, Dictionary<string, PresenceInfo> presence)> TryGetPresence(string idOrEmail)
+        public async Task<(bool success, string? details, Dictionary<string, PresenceInfo>? presence)> TryGetPresence(string idOrEmail)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{idOrEmail}/presence", null);
 
@@ -372,14 +372,14 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetPresence(idOrEmail);
             if (!result.success) throw new Exception(result.details);
-            return result.presence;
+            return result.presence!;
         }
 
         /// <summary>Mutes a user.</summary>
         /// <param name="userId">The user ID to mute.</param>
         /// <remarks>Feature level 188: muted-users endpoints were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryMuteUser(int userId)
+        public async Task<(bool success, string? details)> TryMuteUser(int userId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_usersApiEndpoint}/me/muted_users/{userId}", new Dictionary<string, string>());
 
@@ -402,7 +402,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="userId">The user ID to unmute.</param>
         /// <remarks>Feature level 188: muted-users endpoints were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUnmuteUser(int userId)
+        public async Task<(bool success, string? details)> TryUnmuteUser(int userId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_usersApiEndpoint}/me/muted_users/{userId}", null);
 
@@ -423,7 +423,7 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Gets alert words.</summary>
         /// <returns>An asynchronous result that yields (success, details, alertWords).</returns>
-        public async Task<(bool success, string details, List<string> alertWords)> TryGetAlertWords()
+        public async Task<(bool success, string? details, List<string>? alertWords)> TryGetAlertWords()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/me/alert_words", null);
 
@@ -440,13 +440,13 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAlertWords();
             if (!result.success) throw new Exception(result.details);
-            return result.alertWords;
+            return result.alertWords!;
         }
 
         /// <summary>Adds alert words.</summary>
         /// <param name="words">The words to add.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryAddAlertWords(string[] words)
+        public async Task<(bool success, string? details)> TryAddAlertWords(string[] words)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -473,7 +473,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets user groups.</summary>
         /// <remarks>Feature level 324: user-group objects gained additional governance fields such as <c>can_remove_members_group</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details, groups).</returns>
-        public async Task<(bool success, string details, List<UserGroupObject> groups)> TryGetGroups()
+        public async Task<(bool success, string? details, List<UserGroupObject>? groups)> TryGetGroups()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/user_groups", null);
 
@@ -490,7 +490,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetGroups();
             if (!result.success) throw new Exception(result.details);
-            return result.groups;
+            return result.groups!;
         }
 
         /// <summary>Creates a user group.</summary>
@@ -499,7 +499,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="members">The member user IDs.</param>
         /// <remarks>Feature level 324: creation supports newer group-permission fields in Zulip API payloads.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryCreateGroup(string name, string description, int[] members)
+        public async Task<(bool success, string? details)> TryCreateGroup(string name, string description, int[] members)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -529,7 +529,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="groupId">The group ID.</param>
         /// <remarks>Feature level 303: group-members listing endpoint is tracked in changelog history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, members).</returns>
-        public async Task<(bool success, string details, List<int> members)> TryGetGroupMembers(int groupId)
+        public async Task<(bool success, string? details, List<int>? members)> TryGetGroupMembers(int groupId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"api/v1/user_groups/{groupId}/members", null);
 
@@ -546,7 +546,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetGroupMembers(groupId);
             if (!result.success) throw new Exception(result.details);
-            return result.members;
+            return result.members!;
         }
     }
 }

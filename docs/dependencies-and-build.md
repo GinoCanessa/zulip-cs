@@ -41,17 +41,13 @@ flowchart LR
 
 ## Version Information in Source
 
-Current project file versions found in source:
+All projects share a single version defined in `src/common.props`:
 
-- `zulip-cs-lib`: `0.0.1-beta.2`
-- `zulip-cs-cli`: `0.0.1-beta.2`
-- `zulip-cs-lib.tests`: `0.0.1-alpha.5`
-
-Note: documentation footers in this set intentionally use the requested published version `0.0.1-beta.1`.
+- Current version: `0.0.1-beta.4`
 
 ## Build and Test Commands
 
-Run from `src/`:
+Run from the repository root (where `zulip-cs.sln` lives):
 
 ```bash
 dotnet restore
@@ -78,5 +74,5 @@ dotnet test --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Messag
 - For `curl` backend usage, ensure the executable path is available and accessible.
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4

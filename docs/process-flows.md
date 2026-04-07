@@ -73,5 +73,5 @@ Recommended practice: always call `DeleteQueue` on shutdown to clean up server-s
 Both return `ZulipResponse`, so resource behavior remains consistent independent of transport.
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4

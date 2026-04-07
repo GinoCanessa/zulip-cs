@@ -14,6 +14,6 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the event type.</summary>
         [JsonPropertyName("type")]
-        public string Type { get; set; }
+        public string? Type { get; set; }
     }
 }

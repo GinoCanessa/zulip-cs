@@ -123,10 +123,11 @@ Main object groups:
 
 - Messaging: `MessageObject`, `MessageHistoryObject`.
 - Streams/topics/subscriptions: `StreamObject`, `TopicObject`, `SubscriptionObject`.
-- Users/presence/status/groups: `UserObject`, `UserModels`, `UserStatusObject`, `PresenceInfo`, `UserGroupObject`.
+- Users/presence/status/groups: `UserObject`, `UserStatusObject`, `PresenceInfo`, `UserGroupObject` (defined in `UserModels.cs`).
 - Async/eventing: `EventObject`.
-- Scheduled content: `ScheduledMessageObject`, `DraftObject`, `ReminderObject`, `SavedSnippetObject`.
-- Org and config: `InviteObject`, `OrganizationObjects`, `MiscObjects`, `NavigationViewObject`.
+- Scheduled content: `ScheduledMessageObject`, `DraftObject`.
+- Misc resources: `SavedSnippetObject`, `ReminderObject`, `NavigationViewObject` (defined in `MiscObjects.cs`).
+- Org and config: `InviteObject`, `LinkifierObject`, `EmojiObject`, `ProfileFieldObject` (defined in `OrganizationObjects.cs`).
 
 ## Error Handling Contract
 
@@ -140,5 +141,5 @@ For throwing variants:
 - Throw `Exception` with details derived from `ZulipResponse.GetFailureMessage()` when operation fails.
 
 ---
-Generated on: 2026-03-05  
-Published version: 0.0.1-beta.1
+Generated on: 2026-04-07  
+Published version: 0.0.1-beta.4

@@ -9,12 +9,12 @@ namespace zulip_cs_lib.Resources
     public class Server
     {
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Server class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Server(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -25,7 +25,7 @@ namespace zulip_cs_lib.Resources
         /// The changelog and this library both assume callers read this value before using newer endpoint parameters.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, zulipVersion, featureLevel).</returns>
-        public async Task<(bool success, string details, string zulipVersion, int? featureLevel)> TryGetSettings()
+        public async Task<(bool success, string? details, string? zulipVersion, int? featureLevel)> TryGetSettings()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/server_settings", null);
 
@@ -48,7 +48,7 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
-            return (result.zulipVersion, result.featureLevel);
+            return (result.zulipVersion!, result.featureLevel);
         }
     }
 }

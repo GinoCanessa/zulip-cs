@@ -25,7 +25,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Reminders.TryGetAll();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.reminders);
+            Assert.Single(actual.reminders!);
         }
 
         [Fact]

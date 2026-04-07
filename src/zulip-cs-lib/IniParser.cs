@@ -20,7 +20,7 @@ namespace zulip_cs_lib
         /// <param name="sectionName">Name of the section.</param>
         /// <param name="sectionData">[out] Information describing the section.</param>
         /// <returns>True if it succeeds, false if it fails.</returns>
-        public static bool TryGetSectionDataFromFile(string filename, string sectionName, out Dictionary<string, string> sectionData)
+        public static bool TryGetSectionDataFromFile(string filename, string sectionName, out Dictionary<string, string>? sectionData)
         {
             if (string.IsNullOrEmpty(filename))
             {
@@ -50,7 +50,7 @@ namespace zulip_cs_lib
         /// <param name="sectionName">Name of the section.</param>
         /// <param name="sectionData">[out] Information describing the section.</param>
         /// <returns>True if it succeeds, false if it fails.</returns>
-        public static bool TryGetSectionData(string contents, string sectionName, out Dictionary<string, string> sectionData)
+        public static bool TryGetSectionData(string contents, string sectionName, out Dictionary<string, string>? sectionData)
         {
             if (string.IsNullOrEmpty(contents))
             {
@@ -85,7 +85,7 @@ namespace zulip_cs_lib
 
             while (!done)
             {
-                string line = reader.ReadLine();
+                string? line = reader.ReadLine();
 
                 if (line == null)
                 {

@@ -10,12 +10,12 @@ namespace zulip_cs_lib.Resources
     public class Organization
     {
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Organization class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Organization(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -23,7 +23,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all linkifiers.</summary>
         /// <remarks>Feature level 54: linkifier listing endpoint is part of the long-standing organization settings API.</remarks>
         /// <returns>An asynchronous result that yields (success, details, linkifiers).</returns>
-        public async Task<(bool success, string details, List<LinkifierObject> linkifiers)> TryGetLinkifiers()
+        public async Task<(bool success, string? details, List<LinkifierObject>? linkifiers)> TryGetLinkifiers()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/realm/linkifiers", null);
 
@@ -40,7 +40,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetLinkifiers();
             if (!result.success) throw new Exception(result.details);
-            return result.linkifiers;
+            return result.linkifiers!;
         }
 
         /// <summary>Adds a linkifier.</summary>
@@ -48,7 +48,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="urlTemplate">The URL template.</param>
         /// <remarks>Feature level 176: linkifier create/update APIs were formalized for realm filters.</remarks>
         /// <returns>An asynchronous result that yields (success, details, filterId).</returns>
-        public async Task<(bool success, string details, int filterId)> TryAddLinkifier(string pattern, string urlTemplate)
+        public async Task<(bool success, string? details, int filterId)> TryAddLinkifier(string pattern, string urlTemplate)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -80,7 +80,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="urlTemplate">The new URL template.</param>
         /// <remarks>Feature level 176: linkifier update endpoint is tracked as part of realm filter APIs.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUpdateLinkifier(int filterId, string pattern, string urlTemplate)
+        public async Task<(bool success, string? details)> TryUpdateLinkifier(int filterId, string pattern, string urlTemplate)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -108,7 +108,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Removes a linkifier.</summary>
         /// <param name="filterId">The filter ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryRemoveLinkifier(int filterId)
+        public async Task<(bool success, string? details)> TryRemoveLinkifier(int filterId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"api/v1/realm/filters/{filterId}", null);
 
@@ -130,7 +130,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all custom emoji.</summary>
         /// <remarks>Feature level 113: custom emoji listing endpoint is tracked in API feature history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, emoji).</returns>
-        public async Task<(bool success, string details, Dictionary<string, EmojiObject> emoji)> TryGetCustomEmoji()
+        public async Task<(bool success, string? details, Dictionary<string, EmojiObject>? emoji)> TryGetCustomEmoji()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/realm/emoji", null);
 
@@ -147,14 +147,14 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetCustomEmoji();
             if (!result.success) throw new Exception(result.details);
-            return result.emoji;
+            return result.emoji!;
         }
 
         /// <summary>Deactivates a custom emoji.</summary>
         /// <param name="emojiName">The emoji name.</param>
         /// <remarks>Feature level 190: custom emoji deactivation endpoint is tracked in changelog history.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDeactivateCustomEmoji(string emojiName)
+        public async Task<(bool success, string? details)> TryDeactivateCustomEmoji(string emojiName)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"api/v1/realm/emoji/{emojiName}", null);
 
@@ -176,7 +176,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets custom profile fields.</summary>
         /// <remarks>Feature level 455: profile fields gained <c>use_for_user_matching</c> in API payloads.</remarks>
         /// <returns>An asynchronous result that yields (success, details, fields).</returns>
-        public async Task<(bool success, string details, List<ProfileFieldObject> fields)> TryGetProfileFields()
+        public async Task<(bool success, string? details, List<ProfileFieldObject>? fields)> TryGetProfileFields()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/realm/profile_fields", null);
 
@@ -193,7 +193,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetProfileFields();
             if (!result.success) throw new Exception(result.details);
-            return result.fields;
+            return result.fields!;
         }
 
         /// <summary>Creates a custom profile field.</summary>
@@ -202,7 +202,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="hint">(Optional) The field hint.</param>
         /// <remarks>Feature level 455: created profile field objects include newer matching metadata fields.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryCreateProfileField(int fieldType, string name, string hint = null)
+        public async Task<(bool success, string? details)> TryCreateProfileField(int fieldType, string name, string? hint = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -223,7 +223,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Creates a custom profile field (throwing version).</summary>
-        public async Task CreateProfileField(int fieldType, string name, string hint = null)
+        public async Task CreateProfileField(int fieldType, string name, string? hint = null)
         {
             var result = await TryCreateProfileField(fieldType, name, hint);
             if (!result.success) throw new Exception(result.details);

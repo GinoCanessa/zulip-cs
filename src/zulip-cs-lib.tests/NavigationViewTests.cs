@@ -25,7 +25,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.NavigationViews.TryGetAll();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.views);
+            Assert.Single(actual.views!);
         }
 
         [Fact]

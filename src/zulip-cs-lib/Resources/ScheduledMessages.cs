@@ -14,12 +14,12 @@ namespace zulip_cs_lib.Resources
         private const string _endpoint = "api/v1/scheduled_messages";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the ScheduledMessages class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal ScheduledMessages(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -27,7 +27,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all scheduled messages.</summary>
         /// <remarks>Feature level 181: scheduled-message listing endpoint became available.</remarks>
         /// <returns>An asynchronous result that yields (success, details, scheduledMessages).</returns>
-        public async Task<(bool success, string details, List<ScheduledMessageObject> scheduledMessages)> TryGetAll()
+        public async Task<(bool success, string? details, List<ScheduledMessageObject>? scheduledMessages)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
@@ -44,7 +44,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.scheduledMessages;
+            return result.scheduledMessages!;
         }
 
         /// <summary>Creates a scheduled message.</summary>
@@ -57,12 +57,12 @@ namespace zulip_cs_lib.Resources
         /// Feature level 370: the special "(no topic)" value is interpreted as an empty topic name.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, scheduledMessageId).</returns>
-        public async Task<(bool success, string details, int scheduledMessageId)> TryCreate(
+        public async Task<(bool success, string? details, int scheduledMessageId)> TryCreate(
             string type,
             string to,
             string content,
             long scheduledDeliveryTimestamp,
-            string topic = null)
+            string? topic = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -85,7 +85,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Creates a scheduled message (throwing version).</summary>
-        public async Task<int> Create(string type, string to, string content, long scheduledDeliveryTimestamp, string topic = null)
+        public async Task<int> Create(string type, string to, string content, long scheduledDeliveryTimestamp, string? topic = null)
         {
             var result = await TryCreate(type, to, content, scheduledDeliveryTimestamp, topic);
             if (!result.success) throw new Exception(result.details);
@@ -101,11 +101,11 @@ namespace zulip_cs_lib.Resources
         /// Feature level 370: updates using "(no topic)" map to an empty topic name.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryEdit(
+        public async Task<(bool success, string? details)> TryEdit(
             int scheduledMessageId,
-            string content = null,
+            string? content = null,
             long? scheduledDeliveryTimestamp = null,
-            string topic = null)
+            string? topic = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -124,7 +124,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Edits a scheduled message (throwing version).</summary>
-        public async Task Edit(int scheduledMessageId, string content = null, long? scheduledDeliveryTimestamp = null, string topic = null)
+        public async Task Edit(int scheduledMessageId, string? content = null, long? scheduledDeliveryTimestamp = null, string? topic = null)
         {
             var result = await TryEdit(scheduledMessageId, content, scheduledDeliveryTimestamp, topic);
             if (!result.success) throw new Exception(result.details);
@@ -134,7 +134,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="scheduledMessageId">The scheduled message ID.</param>
         /// <remarks>Feature level 173: scheduled-message deletion endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDelete(int scheduledMessageId)
+        public async Task<(bool success, string? details)> TryDelete(int scheduledMessageId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{scheduledMessageId}", null);
 

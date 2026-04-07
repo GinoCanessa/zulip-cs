@@ -14,7 +14,7 @@ namespace zulip_cs_lib.Resources
         private NarrowOperator _operator;
 
         /// <summary>The operand value (string, long, or long[] depending on the narrow type).</summary>
-        private object _operand;
+        private object? _operand;
 
         /// <summary>Whether this narrow is negated.</summary>
         private bool _negated;
@@ -93,7 +93,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="op">The operator.</param>
         /// <param name="operand">(Optional) The operand value (e.g., channel name, topic, email).</param>
         /// <param name="negated">(Optional) Whether this narrow is negated.</param>
-        public Narrow(NarrowOperator op, string operand = null, bool negated = false)
+        public Narrow(NarrowOperator op, string? operand = null, bool negated = false)
         {
             _operator = op;
             _operand = operand;

@@ -13,23 +13,23 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the type.</summary>
         [JsonPropertyName("type")]
-        public string Type { get; set; }
+        public string? Type { get; set; }
 
         /// <summary>Gets or sets the recipients.</summary>
         [JsonPropertyName("to")]
-        public object To { get; set; }
+        public object? To { get; set; }
 
         /// <summary>Gets or sets the content.</summary>
         [JsonPropertyName("content")]
-        public string Content { get; set; }
+        public string? Content { get; set; }
 
         /// <summary>Gets or sets the rendered content.</summary>
         [JsonPropertyName("rendered_content")]
-        public string RenderedContent { get; set; }
+        public string? RenderedContent { get; set; }
 
         /// <summary>Gets or sets the topic.</summary>
         [JsonPropertyName("topic")]
-        public string Topic { get; set; }
+        public string? Topic { get; set; }
 
         /// <summary>Gets or sets the scheduled delivery timestamp.</summary>
         [JsonPropertyName("scheduled_delivery_timestamp")]

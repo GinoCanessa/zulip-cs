@@ -12,15 +12,15 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the name.</summary>
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>Gets or sets the description.</summary>
         [JsonPropertyName("description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>Gets or sets the members.</summary>
         [JsonPropertyName("members")]
-        public List<int> Members { get; set; }
+        public List<int>? Members { get; set; }
     }
 
     /// <summary>Represents a user status.</summary>
@@ -28,19 +28,19 @@ namespace zulip_cs_lib.Models
     {
         /// <summary>Gets or sets the status text.</summary>
         [JsonPropertyName("status_text")]
-        public string StatusText { get; set; }
+        public string? StatusText { get; set; }
 
         /// <summary>Gets or sets the emoji name.</summary>
         [JsonPropertyName("emoji_name")]
-        public string EmojiName { get; set; }
+        public string? EmojiName { get; set; }
 
         /// <summary>Gets or sets the emoji code.</summary>
         [JsonPropertyName("emoji_code")]
-        public string EmojiCode { get; set; }
+        public string? EmojiCode { get; set; }
 
         /// <summary>Gets or sets the reaction type.</summary>
         [JsonPropertyName("reaction_type")]
-        public string ReactionType { get; set; }
+        public string? ReactionType { get; set; }
 
         /// <summary>Gets or sets whether the user is away.</summary>
         [JsonPropertyName("away")]
@@ -52,7 +52,7 @@ namespace zulip_cs_lib.Models
     {
         /// <summary>Gets or sets the status string.</summary>
         [JsonPropertyName("status")]
-        public string Status { get; set; }
+        public string? Status { get; set; }
 
         /// <summary>Gets or sets the timestamp.</summary>
         [JsonPropertyName("timestamp")]
@@ -60,6 +60,6 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the client.</summary>
         [JsonPropertyName("client")]
-        public string Client { get; set; }
+        public string? Client { get; set; }
     }
 }

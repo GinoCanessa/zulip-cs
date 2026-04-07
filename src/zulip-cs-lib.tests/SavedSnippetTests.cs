@@ -25,7 +25,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.SavedSnippets.TryGetAll();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.snippets);
+            Assert.Single(actual.snippets!);
         }
 
         [Fact]

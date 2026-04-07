@@ -15,11 +15,11 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the email.</summary>
         [JsonPropertyName("email")]
-        public string Email { get; set; }
+        public string? Email { get; set; }
 
         /// <summary>Gets or sets the full name.</summary>
         [JsonPropertyName("full_name")]
-        public string FullName { get; set; }
+        public string? FullName { get; set; }
 
         /// <summary>Gets or sets a value indicating whether the user is a bot.</summary>
         [JsonPropertyName("is_bot")]
@@ -27,7 +27,7 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the avatar URL.</summary>
         [JsonPropertyName("avatar_url")]
-        public string AvatarUrl { get; set; }
+        public string? AvatarUrl { get; set; }
 
         /// <summary>Gets or sets the role.</summary>
         [JsonPropertyName("role")]
@@ -39,14 +39,14 @@ namespace zulip_cs_lib.Models
 
         /// <summary>Gets or sets the timezone.</summary>
         [JsonPropertyName("timezone")]
-        public string Timezone { get; set; }
+        public string? Timezone { get; set; }
 
         /// <summary>Gets or sets the date joined.</summary>
         [JsonPropertyName("date_joined")]
-        public string DateJoined { get; set; }
+        public string? DateJoined { get; set; }
 
         /// <summary>Gets or sets the delivery email.</summary>
         [JsonPropertyName("delivery_email")]
-        public string DeliveryEmail { get; set; }
+        public string? DeliveryEmail { get; set; }
     }
 }

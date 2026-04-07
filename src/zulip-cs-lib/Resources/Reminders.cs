@@ -13,12 +13,12 @@ namespace zulip_cs_lib.Resources
         private const string _endpoint = "api/v1/reminders";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Reminders class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Reminders(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -26,7 +26,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all reminders.</summary>
         /// <remarks>Feature level 399: reminder listing/deletion endpoints were added.</remarks>
         /// <returns>An asynchronous result that yields (success, details, reminders).</returns>
-        public async Task<(bool success, string details, List<ReminderObject> reminders)> TryGetAll()
+        public async Task<(bool success, string? details, List<ReminderObject>? reminders)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
@@ -43,7 +43,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.reminders;
+            return result.reminders!;
         }
 
         /// <summary>Creates a reminder.</summary>
@@ -54,7 +54,7 @@ namespace zulip_cs_lib.Resources
         /// This wrapper currently sends the core scheduling fields.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryCreate(int messageId, long scheduledDeliveryTimestamp)
+        public async Task<(bool success, string? details)> TryCreate(int messageId, long scheduledDeliveryTimestamp)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -83,7 +83,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="reminderId">The reminder ID.</param>
         /// <remarks>Feature level 399: reminder deletion endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDelete(int reminderId)
+        public async Task<(bool success, string? details)> TryDelete(int reminderId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{reminderId}", null);
 

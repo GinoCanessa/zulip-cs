@@ -25,7 +25,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Invitations.TryGetAll();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.invites);
+            Assert.Single(actual.invites!);
         }
 
         [Fact]

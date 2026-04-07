@@ -46,7 +46,7 @@ public static class Program
     /// <summary>Creates a ZulipClient from the resolved zuliprc path.</summary>
     /// <param name="zuliprcFilename">Explicit path or empty to search.</param>
     /// <returns>A configured ZulipClient.</returns>
-    private static ZulipClient CreateClient(string zuliprcFilename)
+    private static ZulipClient CreateClient(string? zuliprcFilename)
     {
         if (string.IsNullOrEmpty(zuliprcFilename))
         {
@@ -77,25 +77,25 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
-            string message = ctx.ParseResult.GetValueForOption(messageOpt);
-            string emails = ctx.ParseResult.GetValueForOption(emailsOpt);
-            string userIds = ctx.ParseResult.GetValueForOption(userIdsOpt);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? message = ctx.ParseResult.GetValueForOption(messageOpt);
+            string? emails = ctx.ParseResult.GetValueForOption(emailsOpt);
+            string? userIds = ctx.ParseResult.GetValueForOption(userIdsOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
-            (bool success, string details, ulong messageId) result;
+            (bool success, string? details, ulong messageId) result;
 
             if (!string.IsNullOrEmpty(emails))
             {
                 string[] emailArr = emails.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                result = await client.Messages.TrySendPrivate(message, emailArr);
+                result = await client.Messages.TrySendPrivate(message!, emailArr);
             }
             else if (!string.IsNullOrEmpty(userIds))
             {
                 int[] idArr = userIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(int.Parse).ToArray();
-                result = await client.Messages.TrySendPrivate(message, idArr);
+                result = await client.Messages.TrySendPrivate(message!, idArr);
             }
             else
             {
@@ -136,26 +136,26 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
-            string message = ctx.ParseResult.GetValueForOption(messageOpt);
-            string topic = ctx.ParseResult.GetValueForOption(topicOpt);
-            string streams = ctx.ParseResult.GetValueForOption(streamsOpt);
-            string streamIds = ctx.ParseResult.GetValueForOption(streamIdsOpt);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? message = ctx.ParseResult.GetValueForOption(messageOpt);
+            string? topic = ctx.ParseResult.GetValueForOption(topicOpt);
+            string? streams = ctx.ParseResult.GetValueForOption(streamsOpt);
+            string? streamIds = ctx.ParseResult.GetValueForOption(streamIdsOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
-            (bool success, string details, ulong messageId) result;
+            (bool success, string? details, ulong messageId) result;
 
             if (!string.IsNullOrEmpty(streams))
             {
                 string[] streamArr = streams.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                result = await client.Messages.TrySendStream(message, topic, streamArr);
+                result = await client.Messages.TrySendStream(message!, topic!, streamArr);
             }
             else if (!string.IsNullOrEmpty(streamIds))
             {
                 int[] idArr = streamIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(int.Parse).ToArray();
-                result = await client.Messages.TrySendStream(message, topic, idArr);
+                result = await client.Messages.TrySendStream(message!, topic!, idArr);
             }
             else
             {
@@ -198,12 +198,12 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
-            string content = ctx.ParseResult.GetValueForOption(contentOpt);
-            string topic = ctx.ParseResult.GetValueForOption(topicOpt);
+            string? content = ctx.ParseResult.GetValueForOption(contentOpt);
+            string? topic = ctx.ParseResult.GetValueForOption(topicOpt);
             int? moveToStream = ctx.ParseResult.GetValueForOption(moveToStreamOpt);
-            string propagate = ctx.ParseResult.GetValueForOption(propagateOpt);
+            string? propagate = ctx.ParseResult.GetValueForOption(propagateOpt);
 
             Messages.EditPropagateMode mode = propagate?.ToLowerInvariant() switch
             {
@@ -214,7 +214,7 @@ public static class Program
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryEdit(messageId, content, topic, moveToStream, mode);
+            var result = await client.Messages.TryEdit(messageId, content!, topic!, moveToStream, mode);
 
             if (result.success)
             {
@@ -242,7 +242,7 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
 
             ZulipClient client = CreateClient(zuliprc);
@@ -277,7 +277,7 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
             bool? markdown = ctx.ParseResult.GetValueForOption(markdownOpt);
 
@@ -317,8 +317,8 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
-            string anchor = ctx.ParseResult.GetValueForOption(anchorOpt);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? anchor = ctx.ParseResult.GetValueForOption(anchorOpt);
             int numBefore = ctx.ParseResult.GetValueForOption(numBeforeOpt);
             int numAfter = ctx.ParseResult.GetValueForOption(numAfterOpt);
             bool? markdown = ctx.ParseResult.GetValueForOption(markdownOpt);
@@ -380,15 +380,15 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
-            string emojiName = ctx.ParseResult.GetValueForOption(emojiNameOpt);
-            string emojiCode = ctx.ParseResult.GetValueForOption(emojiCodeOpt);
-            string reactionType = ctx.ParseResult.GetValueForOption(reactionTypeOpt);
+            string? emojiName = ctx.ParseResult.GetValueForOption(emojiNameOpt);
+            string? emojiCode = ctx.ParseResult.GetValueForOption(emojiCodeOpt);
+            string? reactionType = ctx.ParseResult.GetValueForOption(reactionTypeOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryAddEmoji(messageId, emojiName, emojiCode, reactionType);
+            var result = await client.Messages.TryAddEmoji(messageId, emojiName!, emojiCode!, reactionType!);
 
             if (result.success)
             {
@@ -422,15 +422,15 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
-            string emojiName = ctx.ParseResult.GetValueForOption(emojiNameOpt);
-            string emojiCode = ctx.ParseResult.GetValueForOption(emojiCodeOpt);
-            string reactionType = ctx.ParseResult.GetValueForOption(reactionTypeOpt);
+            string? emojiName = ctx.ParseResult.GetValueForOption(emojiNameOpt);
+            string? emojiCode = ctx.ParseResult.GetValueForOption(emojiCodeOpt);
+            string? reactionType = ctx.ParseResult.GetValueForOption(reactionTypeOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryRemoveEmoji(messageId, emojiName, emojiCode, reactionType);
+            var result = await client.Messages.TryRemoveEmoji(messageId, emojiName!, emojiCode!, reactionType!);
 
             if (result.success)
             {
@@ -458,12 +458,12 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
-            string content = ctx.ParseResult.GetValueForOption(contentOpt);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? content = ctx.ParseResult.GetValueForOption(contentOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryRender(content);
+            var result = await client.Messages.TryRender(content!);
 
             if (result.success)
             {
@@ -495,12 +495,12 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
-            string messageIdsStr = ctx.ParseResult.GetValueForOption(messageIdsOpt);
-            string op = ctx.ParseResult.GetValueForOption(opOpt);
-            string flag = ctx.ParseResult.GetValueForOption(flagOpt);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? messageIdsStr = ctx.ParseResult.GetValueForOption(messageIdsOpt);
+            string? op = ctx.ParseResult.GetValueForOption(opOpt);
+            string? flag = ctx.ParseResult.GetValueForOption(flagOpt);
 
-            ulong[] messageIds = messageIdsStr
+            ulong[] messageIds = messageIdsStr!
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(ulong.Parse).ToArray();
 
@@ -510,7 +510,7 @@ public static class Program
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryUpdateFlags(messageIds, operation, flag);
+            var result = await client.Messages.TryUpdateFlags(messageIds, operation, flag!);
 
             if (result.success)
             {
@@ -538,7 +538,7 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
 
             ZulipClient client = CreateClient(zuliprc);
@@ -568,7 +568,7 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
 
             ZulipClient client = CreateClient(zuliprc);
 
@@ -600,7 +600,7 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             int streamId = ctx.ParseResult.GetValueForOption(streamIdOpt);
 
             ZulipClient client = CreateClient(zuliprc);
@@ -635,13 +635,13 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             int streamId = ctx.ParseResult.GetValueForOption(streamIdOpt);
-            string topic = ctx.ParseResult.GetValueForOption(topicOpt);
+            string? topic = ctx.ParseResult.GetValueForOption(topicOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryMarkTopicAsRead(streamId, topic);
+            var result = await client.Messages.TryMarkTopicAsRead(streamId, topic!);
 
             if (result.success)
             {
@@ -669,7 +669,7 @@ public static class Program
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
-            string zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
             ulong messageId = ctx.ParseResult.GetValueForOption(messageIdOpt);
 
             ZulipClient client = CreateClient(zuliprc);

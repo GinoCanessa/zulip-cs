@@ -11,7 +11,7 @@ namespace zulip_set_lib.tests
         public void ZulipResponse_Deserialize_Success()
         {
             string json = "{\"result\":\"success\",\"msg\":\"\",\"id\":42}";
-            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json);
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
 
             Assert.Equal("success", response.Result);
             Assert.Equal(string.Empty, response.Message);
@@ -22,7 +22,7 @@ namespace zulip_set_lib.tests
         public void ZulipResponse_Deserialize_Error()
         {
             string json = "{\"result\":\"error\",\"msg\":\"Something went wrong\",\"code\":\"BAD_REQUEST\"}";
-            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json);
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
 
             Assert.Equal("error", response.Result);
             Assert.Equal("Something went wrong", response.Message);
@@ -33,7 +33,7 @@ namespace zulip_set_lib.tests
         public void ZulipResponse_Deserialize_WithMessages()
         {
             string json = "{\"result\":\"success\",\"msg\":\"\",\"messages\":[{\"id\":1,\"sender_id\":10,\"content\":\"Hello\",\"subject\":\"test\",\"type\":\"stream\"}]}";
-            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json);
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
 
             Assert.Equal("success", response.Result);
             Assert.NotNull(response.Messages);
@@ -45,7 +45,7 @@ namespace zulip_set_lib.tests
         public void ZulipResponse_Deserialize_WithMembers()
         {
             string json = "{\"result\":\"success\",\"msg\":\"\",\"members\":[{\"user_id\":1,\"email\":\"a@example.org\",\"full_name\":\"Alice\"},{\"user_id\":2,\"email\":\"b@example.org\",\"full_name\":\"Bob\"}]}";
-            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json);
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
 
             Assert.Equal("success", response.Result);
             Assert.NotNull(response.Members);
@@ -56,7 +56,7 @@ namespace zulip_set_lib.tests
         public void ZulipResponse_Deserialize_ServerSettings()
         {
             string json = "{\"result\":\"success\",\"msg\":\"\",\"zulip_version\":\"9.0\",\"zulip_feature_level\":310}";
-            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json);
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
 
             Assert.Equal("9.0", response.ZulipVersion);
             Assert.Equal(310, response.ZulipFeatureLevel);

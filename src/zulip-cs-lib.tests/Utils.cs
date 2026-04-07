@@ -70,7 +70,7 @@ internal static class Utils
         out HttpClient mockHttpClient)
     {
         mockMessageHandler = new Mock<HttpMessageHandler>();
-        HttpRequestMessage captured = null;
+        HttpRequestMessage? captured = null;
 
         HttpResponseMessage mockResponse = new HttpResponseMessage()
         {
@@ -88,7 +88,7 @@ internal static class Utils
             .ReturnsAsync(mockResponse);
 
         mockHttpClient = new HttpClient(mockMessageHandler.Object);
-        capturedRequest = captured;
+        capturedRequest = captured!;
 
         return true;
     }

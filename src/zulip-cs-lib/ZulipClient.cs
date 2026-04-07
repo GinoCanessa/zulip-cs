@@ -15,61 +15,61 @@ namespace zulip_cs_lib
     public class ZulipClient
     {
         /// <summary>The site.</summary>
-        private string _site;
+        private string _site = null!;
 
         /// <summary>The user email.</summary>
-        private string _userEmail;
+        private string _userEmail = null!;
 
         /// <summary>The API key.</summary>
-        private string _apiKey;
+        private string _apiKey = null!;
 
         /// <summary>The HTTP client.</summary>
-        private HttpClient _httpClient;
+        private HttpClient? _httpClient;
 
         /// <summary>URI of the site.</summary>
-        private Uri _siteUri;
+        private Uri _siteUri = null!;
 
         /// <summary>The authentication header.</summary>
-        private string _authHeader;
+        private string _authHeader = null!;
 
         /// <summary>The messages.</summary>
-        private Messages _messages;
+        private Messages _messages = null!;
 
         /// <summary>The channels.</summary>
-        private Channels _channels;
+        private Channels _channels = null!;
 
         /// <summary>The users.</summary>
-        private Users _users;
+        private Users _users = null!;
 
         /// <summary>The server.</summary>
-        private Server _server;
+        private Server _server = null!;
 
         /// <summary>The events.</summary>
-        private Events _events;
+        private Events _events = null!;
 
         /// <summary>The scheduled messages.</summary>
-        private ScheduledMessages _scheduledMessages;
+        private ScheduledMessages _scheduledMessages = null!;
 
         /// <summary>The drafts.</summary>
-        private Drafts _drafts;
+        private Drafts _drafts = null!;
 
         /// <summary>The invitations.</summary>
-        private Invitations _invitations;
+        private Invitations _invitations = null!;
 
         /// <summary>The organization.</summary>
-        private Organization _organization;
+        private Organization _organization = null!;
 
         /// <summary>The saved snippets.</summary>
-        private SavedSnippets _savedSnippets;
+        private SavedSnippets _savedSnippets = null!;
 
         /// <summary>The reminders.</summary>
-        private Reminders _reminders;
+        private Reminders _reminders = null!;
 
         /// <summary>The navigation views.</summary>
-        private NavigationViews _navigationViews;
+        private NavigationViews _navigationViews = null!;
 
         /// <summary>The curl command.</summary>
-        private string _curlCommand;
+        private string? _curlCommand;
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
         /// <param name="site">      The Zulip site URL.</param>
@@ -79,7 +79,7 @@ namespace zulip_cs_lib
         public ZulipClient(string site, string userEmail, string apiKey, HttpClient httpClient)
         {
             if (string.IsNullOrEmpty(site) ||
-                (!Uri.TryCreate(site, UriKind.Absolute, out Uri siteUri)) ||
+                (!Uri.TryCreate(site, UriKind.Absolute, out Uri? siteUri)) ||
                 ((siteUri.Scheme != Uri.UriSchemeHttp) && (siteUri.Scheme != Uri.UriSchemeHttps)))
             {
                 throw new ArgumentException(nameof(site));
@@ -119,7 +119,7 @@ namespace zulip_cs_lib
         public ZulipClient(string site, string userEmail, string apiKey, string curlCommand)
         {
             if (string.IsNullOrEmpty(site) ||
-                (!Uri.TryCreate(site, UriKind.Absolute, out Uri siteUri)) ||
+                (!Uri.TryCreate(site, UriKind.Absolute, out Uri? siteUri)) ||
                 ((siteUri.Scheme != Uri.UriSchemeHttp) && (siteUri.Scheme != Uri.UriSchemeHttps)))
             {
                 throw new ArgumentException(nameof(site));
@@ -176,12 +176,12 @@ namespace zulip_cs_lib
                 throw new FileNotFoundException(zuliprcFilename);
             }
 
-            if (!IniParser.TryGetSectionDataFromFile(zuliprcFilename, "api", out Dictionary<string, string> apiData))
+            if (!IniParser.TryGetSectionDataFromFile(zuliprcFilename, "api", out Dictionary<string, string>? apiData))
             {
                 throw new KeyNotFoundException($"File: {zuliprcFilename} does not contain [api] data!");
             }
 
-            if (!apiData.ContainsKey("email"))
+            if (apiData == null || !apiData.ContainsKey("email"))
             {
                 throw new KeyNotFoundException($"File: {zuliprcFilename} does not contain an `email` value!");
             }
@@ -201,7 +201,7 @@ namespace zulip_cs_lib
             string apiKey = apiData["key"];
 
             if (string.IsNullOrEmpty(site) ||
-                (!Uri.TryCreate(site, UriKind.Absolute, out Uri siteUri)) ||
+                (!Uri.TryCreate(site, UriKind.Absolute, out Uri? siteUri)) ||
                 ((siteUri.Scheme != Uri.UriSchemeHttp) && (siteUri.Scheme != Uri.UriSchemeHttps)))
             {
                 throw new ArgumentException("site");
@@ -298,7 +298,7 @@ namespace zulip_cs_lib
         /// <summary>Initializes all resource classes.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         private void InitializeResources(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _messages = new Messages(doZulipRequest);
             _channels = new Channels(doZulipRequest);
@@ -320,14 +320,14 @@ namespace zulip_cs_lib
         /// <param name="password">The password.</param>
         /// <param name="httpClient">(Optional) The HTTP client to use.</param>
         /// <returns>An asynchronous result that yields (success, details, apiKey, email).</returns>
-        public static async Task<(bool success, string details, string apiKey, string email)> TryFetchApiKey(
-            string site, string username, string password, HttpClient httpClient = null)
+        public static async Task<(bool success, string? details, string? apiKey, string? email)> TryFetchApiKey(
+            string site, string username, string password, HttpClient? httpClient = null)
         {
             HttpClient client = httpClient ?? new HttpClient();
 
             try
             {
-                if (!Uri.TryCreate(site, UriKind.Absolute, out Uri siteUri))
+                if (!Uri.TryCreate(site, UriKind.Absolute, out Uri? siteUri))
                 {
                     return (false, "Invalid site URL", null, null);
                 }
@@ -344,7 +344,7 @@ namespace zulip_cs_lib
                 HttpResponseMessage response = await client.SendAsync(request);
                 string body = await response.Content.ReadAsStringAsync();
 
-                ZulipResponse zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body);
+                ZulipResponse zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
 
                 if (zulipResponse.Result == ZulipResponse.ZulipResultSuccess)
                 {
@@ -374,7 +374,7 @@ namespace zulip_cs_lib
         internal async Task<ZulipResponse> DoZulipRequestCurl(
             HttpMethod httpMethod,
             string relativeUrl,
-            Dictionary<string, string> data)
+            Dictionary<string, string>? data)
         {
             ZulipResponse zulipResponse;
 
@@ -421,7 +421,7 @@ namespace zulip_cs_lib
                     CreateNoWindow = true,
                 };
 
-                Process proc = Process.Start(startInfo);
+                Process proc = Process.Start(startInfo)!;
                 string body = await proc.StandardOutput.ReadToEndAsync();
                 string errors = await proc.StandardError.ReadToEndAsync();
                 await proc.WaitForExitAsync();
@@ -454,7 +454,7 @@ namespace zulip_cs_lib
 
                 try
                 {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body);
+                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
                     zulipResponse.Success = true;
                 }
                 catch (Exception parseEx)
@@ -488,7 +488,7 @@ namespace zulip_cs_lib
         internal async Task<ZulipResponse> DoZulipRequestHttpClient(
             HttpMethod httpMethod, 
             string relativeUrl, 
-            Dictionary<string, string> data)
+            Dictionary<string, string>? data)
         {
             ZulipResponse zulipResponse;
 
@@ -517,13 +517,13 @@ namespace zulip_cs_lib
 
                 request.Headers.Add("Authorization", _authHeader);
 
-                HttpResponseMessage response = await _httpClient.SendAsync(request);
+                HttpResponseMessage response = await _httpClient!.SendAsync(request);
 
                 string body = await response.Content.ReadAsStringAsync();
 
                 try
                 {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body);
+                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
 
                     zulipResponse.Success = true;
                 }

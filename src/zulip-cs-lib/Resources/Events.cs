@@ -10,12 +10,12 @@ namespace zulip_cs_lib.Resources
     public class Events
     {
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Events class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Events(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -29,9 +29,9 @@ namespace zulip_cs_lib.Resources
         /// Clients should rely on feature-level checks when consuming evolving register payload fields.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, queueId, lastEventId).</returns>
-        public async Task<(bool success, string details, string queueId, int lastEventId)> TryRegisterQueue(
-            string eventTypes = null,
-            string narrow = null,
+        public async Task<(bool success, string? details, string? queueId, int lastEventId)> TryRegisterQueue(
+            string? eventTypes = null,
+            string? narrow = null,
             bool? allPublicStreams = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
@@ -52,11 +52,11 @@ namespace zulip_cs_lib.Resources
 
         /// <summary>Registers an event queue (throwing version).</summary>
         public async Task<(string queueId, int lastEventId)> RegisterQueue(
-            string eventTypes = null, string narrow = null, bool? allPublicStreams = null)
+            string? eventTypes = null, string? narrow = null, bool? allPublicStreams = null)
         {
             var result = await TryRegisterQueue(eventTypes, narrow, allPublicStreams);
             if (!result.success) throw new Exception(result.details);
-            return (result.queueId, result.lastEventId);
+            return (result.queueId!, result.lastEventId);
         }
 
         /// <summary>Gets events from a queue.</summary>
@@ -67,7 +67,7 @@ namespace zulip_cs_lib.Resources
         /// Feature level 468: the events stream includes newer device-related event traffic used to keep client device state synchronized.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, events).</returns>
-        public async Task<(bool success, string details, List<EventObject> events)> TryGetEvents(
+        public async Task<(bool success, string? details, List<EventObject>? events)> TryGetEvents(
             string queueId,
             int lastEventId,
             bool? dontBlock = null)
@@ -95,13 +95,13 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetEvents(queueId, lastEventId, dontBlock);
             if (!result.success) throw new Exception(result.details);
-            return result.events;
+            return result.events!;
         }
 
         /// <summary>Deletes an event queue.</summary>
         /// <param name="queueId">The queue ID to delete.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDeleteQueue(string queueId)
+        public async Task<(bool success, string? details)> TryDeleteQueue(string queueId)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {

@@ -45,7 +45,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Users.TryGetUser(42);
             Assert.True(actual.success, actual.details);
-            Assert.Equal(42, actual.user.UserId);
+            Assert.Equal(42, actual.user!.UserId);
         }
 
         [Fact]
@@ -62,7 +62,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Users.TryGetUserByEmail("user@example.org");
             Assert.True(actual.success, actual.details);
-            Assert.Equal("user@example.org", actual.user.Email);
+            Assert.Equal("user@example.org", actual.user!.Email);
         }
 
         [Fact]
@@ -79,7 +79,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Users.TryGetAll();
             Assert.True(actual.success, actual.details);
-            Assert.Equal(2, actual.members.Count);
+            Assert.Equal(2, actual.members!.Count);
         }
 
         [Fact]
@@ -208,8 +208,8 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Users.TryGetAlertWords();
             Assert.True(actual.success, actual.details);
-            Assert.Equal(2, actual.alertWords.Count);
-            Assert.Contains("foo", actual.alertWords);
+            Assert.Equal(2, actual.alertWords!.Count);
+            Assert.Contains("foo", actual.alertWords!);
         }
 
         [Fact]
@@ -242,7 +242,7 @@ namespace zulip_set_lib.tests
 
             var actual = await zulipClient.Users.TryGetGroups();
             Assert.True(actual.success, actual.details);
-            Assert.Single(actual.groups);
+            Assert.Single(actual.groups!);
         }
 
         [Fact]

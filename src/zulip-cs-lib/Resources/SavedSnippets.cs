@@ -13,12 +13,12 @@ namespace zulip_cs_lib.Resources
         private const string _endpoint = "api/v1/saved_snippets";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the SavedSnippets class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal SavedSnippets(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -26,7 +26,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets all saved snippets.</summary>
         /// <remarks>Feature level 297: saved snippets CRUD APIs were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details, snippets).</returns>
-        public async Task<(bool success, string details, List<SavedSnippetObject> snippets)> TryGetAll()
+        public async Task<(bool success, string? details, List<SavedSnippetObject>? snippets)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
@@ -43,7 +43,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.snippets;
+            return result.snippets!;
         }
 
         /// <summary>Creates a saved snippet.</summary>
@@ -51,7 +51,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="content">The snippet content.</param>
         /// <remarks>Feature level 297: saved snippet creation endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryCreate(string title, string content)
+        public async Task<(bool success, string? details)> TryCreate(string title, string content)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -82,7 +82,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="content">(Optional) New content.</param>
         /// <remarks>Feature level 368: saved snippet edit endpoint and related update events were introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryEdit(int snippetId, string title = null, string content = null)
+        public async Task<(bool success, string? details)> TryEdit(int snippetId, string? title = null, string? content = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
@@ -100,7 +100,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Edits a saved snippet (throwing version).</summary>
-        public async Task Edit(int snippetId, string title = null, string content = null)
+        public async Task Edit(int snippetId, string? title = null, string? content = null)
         {
             var result = await TryEdit(snippetId, title, content);
             if (!result.success) throw new Exception(result.details);
@@ -110,7 +110,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="snippetId">The snippet ID.</param>
         /// <remarks>Feature level 297: saved snippet deletion endpoint was introduced.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDelete(int snippetId)
+        public async Task<(bool success, string? details)> TryDelete(int snippetId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{snippetId}", null);
 

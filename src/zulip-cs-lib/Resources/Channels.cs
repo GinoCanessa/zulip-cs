@@ -14,12 +14,12 @@ namespace zulip_cs_lib.Resources
         private const string _streamsApiEndpoint = "api/v1/streams";
 
         /// <summary>The Zulip request delegate.</summary>
-        private Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> _doZulipRequest;
+        private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
         /// <summary>Initializes a new instance of the Channels class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         internal Channels(
-            Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
         {
             _doZulipRequest = doZulipRequest;
         }
@@ -29,7 +29,7 @@ namespace zulip_cs_lib.Resources
         /// Feature level 441: stream/subscription payloads include newer channel permission group settings such as <c>can_create_topic_group</c>.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details, streams).</returns>
-        public async Task<(bool success, string details, List<StreamObject> streams)> TryGetAll()
+        public async Task<(bool success, string? details, List<StreamObject>? streams)> TryGetAll()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _streamsApiEndpoint, null);
 
@@ -46,14 +46,14 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetAll();
             if (!result.success) throw new Exception(result.details);
-            return result.streams;
+            return result.streams!;
         }
 
         /// <summary>Gets a channel by stream ID.</summary>
         /// <param name="streamId">The stream ID.</param>
         /// <remarks>Feature level 394: stream objects added <c>subscriber_count</c> in API responses.</remarks>
         /// <returns>An asynchronous result that yields (success, details, stream).</returns>
-        public async Task<(bool success, string details, StreamObject stream)> TryGetById(int streamId)
+        public async Task<(bool success, string? details, StreamObject? stream)> TryGetById(int streamId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}", null);
 
@@ -70,13 +70,13 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetById(streamId);
             if (!result.success) throw new Exception(result.details);
-            return result.stream;
+            return result.stream!;
         }
 
         /// <summary>Gets the stream ID by channel name.</summary>
         /// <param name="name">The channel name.</param>
         /// <returns>An asynchronous result that yields (success, details, streamId).</returns>
-        public async Task<(bool success, string details, int streamId)> TryGetIdByName(string name)
+        public async Task<(bool success, string? details, int streamId)> TryGetIdByName(string name)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -104,7 +104,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Gets the current user's subscriptions.</summary>
         /// <remarks>Feature level 441: subscription payloads include updated channel-level permission group metadata.</remarks>
         /// <returns>An asynchronous result that yields (success, details, subscriptions).</returns>
-        public async Task<(bool success, string details, List<SubscriptionObject> subscriptions)> TryGetSubscriptions()
+        public async Task<(bool success, string? details, List<SubscriptionObject>? subscriptions)> TryGetSubscriptions()
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/users/me/subscriptions", null);
 
@@ -121,14 +121,14 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetSubscriptions();
             if (!result.success) throw new Exception(result.details);
-            return result.subscriptions;
+            return result.subscriptions!;
         }
 
         /// <summary>Subscribes to channels.</summary>
         /// <param name="subscriptions">The subscriptions as JSON array of {name} objects.</param>
         /// <remarks>Feature level 441: subscribe supports newer channel permission-group parameters (for example <c>can_create_topic_group</c>).</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TrySubscribe(string subscriptions)
+        public async Task<(bool success, string? details)> TrySubscribe(string subscriptions)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -156,7 +156,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="subscriptions">The channel names to unsubscribe from.</param>
         /// <remarks>Feature level 362: unsubscribe/edit operations support archived channels when permissions allow.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUnsubscribe(string[] subscriptions)
+        public async Task<(bool success, string? details)> TryUnsubscribe(string[] subscriptions)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -184,7 +184,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamId">The stream ID.</param>
         /// <remarks>Feature level 334: topic-list APIs added support for empty topic names via <c>allow_empty_topic_name</c>.</remarks>
         /// <returns>An asynchronous result that yields (success, details, topics).</returns>
-        public async Task<(bool success, string details, List<TopicObject> topics)> TryGetTopics(int streamId)
+        public async Task<(bool success, string? details, List<TopicObject>? topics)> TryGetTopics(int streamId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/me/{streamId}/topics", null);
 
@@ -204,14 +204,14 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetTopics(streamId);
             if (!result.success) throw new Exception(result.details);
-            return result.topics;
+            return result.topics!;
         }
 
         /// <summary>Gets subscribers of a stream.</summary>
         /// <param name="streamId">The stream ID.</param>
         /// <remarks>Feature level 79: subscriber listing endpoint has long-standing support tracked in API history.</remarks>
         /// <returns>An asynchronous result that yields (success, details, subscribers).</returns>
-        public async Task<(bool success, string details, List<int> subscribers)> TryGetSubscribers(int streamId)
+        public async Task<(bool success, string? details, List<int>? subscribers)> TryGetSubscribers(int streamId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}/members", null);
 
@@ -228,7 +228,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetSubscribers(streamId);
             if (!result.success) throw new Exception(result.details);
-            return result.subscribers;
+            return result.subscribers!;
         }
 
         /// <summary>Updates a stream/channel.</summary>
@@ -242,10 +242,10 @@ namespace zulip_cs_lib.Resources
         /// Feature level 349: administrators with metadata access can modify many stream settings without content access.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUpdate(
+        public async Task<(bool success, string? details)> TryUpdate(
             int streamId,
-            string description = null,
-            string newName = null,
+            string? description = null,
+            string? newName = null,
             bool? isPrivate = null,
             bool? isWebPublic = null)
         {
@@ -267,7 +267,7 @@ namespace zulip_cs_lib.Resources
         }
 
         /// <summary>Updates a stream/channel (throwing version).</summary>
-        public async Task Update(int streamId, string description = null, string newName = null, bool? isPrivate = null, bool? isWebPublic = null)
+        public async Task Update(int streamId, string? description = null, string? newName = null, bool? isPrivate = null, bool? isWebPublic = null)
         {
             var result = await TryUpdate(streamId, description, newName, isPrivate, isWebPublic);
             if (!result.success) throw new Exception(result.details);
@@ -277,7 +277,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamId">The stream ID.</param>
         /// <remarks>Feature level 349: channel/organization admins can archive streams with metadata access under updated rules.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryArchive(int streamId)
+        public async Task<(bool success, string? details)> TryArchive(int streamId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_streamsApiEndpoint}/{streamId}", null);
 
@@ -300,7 +300,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="streamId">The stream ID.</param>
         /// <remarks>Feature level 448: access to a channel email address depends on permission to post to that channel.</remarks>
         /// <returns>An asynchronous result that yields (success, details, email).</returns>
-        public async Task<(bool success, string details, string email)> TryGetEmailAddress(int streamId)
+        public async Task<(bool success, string? details, string? email)> TryGetEmailAddress(int streamId)
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}/email_address", null);
 
@@ -317,7 +317,7 @@ namespace zulip_cs_lib.Resources
         {
             var result = await TryGetEmailAddress(streamId);
             if (!result.success) throw new Exception(result.details);
-            return result.email;
+            return result.email!;
         }
 
         /// <summary>Deletes a topic.</summary>
@@ -325,7 +325,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="topicName">The topic name.</param>
         /// <remarks>Feature level 256: dedicated topic-deletion endpoint support is tracked in changelog history.</remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryDeleteTopic(int streamId, string topicName)
+        public async Task<(bool success, string? details)> TryDeleteTopic(int streamId, string topicName)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -352,7 +352,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Adds a default channel.</summary>
         /// <param name="streamId">The stream ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryAddDefaultChannel(int streamId)
+        public async Task<(bool success, string? details)> TryAddDefaultChannel(int streamId)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -379,7 +379,7 @@ namespace zulip_cs_lib.Resources
         /// <summary>Removes a default channel.</summary>
         /// <param name="streamId">The stream ID.</param>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryRemoveDefaultChannel(int streamId)
+        public async Task<(bool success, string? details)> TryRemoveDefaultChannel(int streamId)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
@@ -412,7 +412,7 @@ namespace zulip_cs_lib.Resources
         /// Newer Zulip API uses <c>POST /user_topics</c>; this wrapper currently targets the older muted-topics route.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
-        public async Task<(bool success, string details)> TryUpdateTopicMuting(string stream, string topic, string op)
+        public async Task<(bool success, string? details)> TryUpdateTopicMuting(string stream, string topic, string op)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
