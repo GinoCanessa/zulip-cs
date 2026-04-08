@@ -6,7 +6,7 @@
     },
     "cli-get-messages": {
       "commandName": "Project",
-      "commandLineArgs": "get-messages"
+      "commandLineArgs": "get-messages --stream-id 180804 --anchor 344352456 --num-before 0 --num-after 10 "
     }
   }
 }

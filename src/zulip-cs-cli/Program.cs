@@ -304,24 +304,30 @@ public static class Program
     /// <summary>Builds the get-messages command.</summary>
     private static Command BuildGetMessagesCommand(Option<string> zuliprcOption)
     {
+        Option<string> streamIdOpt = new("--stream-id", "Stream ID to filter messages.");
         Option<string> anchorOpt = new("--anchor", () => "newest", "Anchor: newest, oldest, first_unread, or a message ID.");
         Option<int> numBeforeOpt = new("--num-before", () => 0, "Number of messages before the anchor.");
         Option<int> numAfterOpt = new("--num-after", () => 0, "Number of messages after the anchor.");
         Option<bool?> markdownOpt = new("--apply-markdown", "Whether to apply markdown rendering.");
+        Option<bool?> includeAnchorOpt = new("--include-anchor", "Whether to include the anchor message in results.");
 
         Command cmd = new("get-messages", "Fetch multiple messages.");
+        cmd.AddOption(streamIdOpt);
         cmd.AddOption(anchorOpt);
         cmd.AddOption(numBeforeOpt);
         cmd.AddOption(numAfterOpt);
         cmd.AddOption(markdownOpt);
+        cmd.AddOption(includeAnchorOpt);
 
         cmd.SetHandler(async (InvocationContext ctx) =>
         {
             string? zuliprc = ctx.ParseResult.GetValueForOption(zuliprcOption);
+            string? streamIdValue = ctx.ParseResult.GetValueForOption(streamIdOpt);
             string? anchor = ctx.ParseResult.GetValueForOption(anchorOpt);
             int numBefore = ctx.ParseResult.GetValueForOption(numBeforeOpt);
             int numAfter = ctx.ParseResult.GetValueForOption(numAfterOpt);
             bool? markdown = ctx.ParseResult.GetValueForOption(markdownOpt);
+            bool? includeAnchor = ctx.ParseResult.GetValueForOption(includeAnchorOpt);
 
             Messages.GetAnchorMode anchorMode;
             ulong? anchorId = null;
@@ -346,7 +352,25 @@ public static class Program
 
             ZulipClient client = CreateClient(zuliprc);
 
-            var result = await client.Messages.TryGet(anchorMode, anchorId, numBefore, numAfter, applyMarkdown: markdown);
+            Narrow[] narrows;
+            if (!string.IsNullOrEmpty(streamIdValue) &&
+                long.TryParse(streamIdValue, out long streamId))
+            {
+                narrows = [new Narrow(Narrow.NarrowOperator.Channel, streamId)];
+            }
+            else
+            {
+                narrows = [];
+            }
+
+            var result = await client.Messages.TryGet(
+                anchorMode, 
+                anchorId, 
+                numBefore, 
+                numAfter, 
+                applyMarkdown: markdown,
+                narrow: narrows,
+                includeAnchor: includeAnchor);
 
             if (result.success)
             {
