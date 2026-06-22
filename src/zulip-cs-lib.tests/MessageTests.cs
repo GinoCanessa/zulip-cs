@@ -15,7 +15,7 @@ namespace zulip_set_lib.tests
     public class MessageTests
     {
         [Fact]
-        public async void Message_SendPrivate_EmailSingle()
+        public async Task Message_SendPrivate_EmailSingle()
         {
             HttpStatusCode code = HttpStatusCode.OK;
             Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
@@ -49,7 +49,7 @@ namespace zulip_set_lib.tests
         }
 
         [Fact]
-        public async void Message_SendPrivate_EmailMultiple()
+        public async Task Message_SendPrivate_EmailMultiple()
         {
             HttpStatusCode code = HttpStatusCode.OK;
             Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
@@ -84,7 +84,7 @@ namespace zulip_set_lib.tests
         }
 
         [Fact]
-        public async void Message_SendPrivate_IdSingle()
+        public async Task Message_SendPrivate_IdSingle()
         {
             HttpStatusCode code = HttpStatusCode.OK;
             Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
@@ -118,7 +118,7 @@ namespace zulip_set_lib.tests
         }
 
         [Fact]
-        public async void Message_SendPrivate_IdMultiple()
+        public async Task Message_SendPrivate_IdMultiple()
         {
             HttpStatusCode code = HttpStatusCode.OK;
             Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
@@ -153,7 +153,7 @@ namespace zulip_set_lib.tests
         }
 
         [Fact]
-        public async void Message_SendPrivate_InvalidEmail()
+        public async Task Message_SendPrivate_InvalidEmail()
         {
             HttpStatusCode code = HttpStatusCode.OK;
             Dictionary<string, dynamic> mockResponse = new Dictionary<string, dynamic>()
