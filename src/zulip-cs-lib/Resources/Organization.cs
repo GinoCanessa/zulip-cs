@@ -8,17 +8,23 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib.Resources
 {
     /// <summary>Organization settings resource.</summary>
-    public class Organization
+    public partial class Organization
     {
         /// <summary>The Zulip request delegate.</summary>
         private Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
+        /// <summary>The optional bounded multipart request delegate.</summary>
+        private readonly MultipartUploadDelegate? _doUpload;
+
         /// <summary>Initializes a new instance of the Organization class.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
+        /// <param name="doUpload">The optional multipart request delegate.</param>
         internal Organization(
-            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest,
+            MultipartUploadDelegate? doUpload = null)
         {
             _doZulipRequest = doZulipRequest;
+            _doUpload = doUpload;
         }
 
         /// <summary>Gets all linkifiers.</summary>

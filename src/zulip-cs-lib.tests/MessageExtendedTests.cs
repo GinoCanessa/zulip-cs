@@ -17,6 +17,42 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for new Messages methods added in Phase 1 and Phase 4.</summary>
     public class MessageExtendedTests
     {
+        /// <summary>Reports use server-advertised types and enforce the actual Unicode-code-point threshold, not UTF-16 length.</summary>
+        [Fact]
+        public async Task Messages_ReportSupportsDynamicTypesAndUnicodeLimit()
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests,
+                "{\"result\":\"success\"}", "{\"result\":\"success\"}");
+            await client.Messages.Report(43, "server_custom_type");
+            string description = string.Concat(System.Linq.Enumerable.Repeat("\U0001F642", 1000));
+            await client.Messages.Report(44, "other", description);
+            Assert.Equal(2000, description.Length);
+            Dictionary<string, string> first = await Utils.ReadForm(requests[0]);
+            Assert.Equal("server_custom_type", first["report_type"]);
+            Assert.False(first.ContainsKey("description"));
+            Assert.Equal(description, (await Utils.ReadForm(requests[1]))["description"]);
+            Assert.Equal("/api/v1/messages/44/report", requests[1].RequestUri!.AbsolutePath);
+            Assert.False((await client.Messages.TryReport(44, "other", description + "\U0001F642")).success);
+            Assert.False((await client.Messages.TryReport(44, "other", "")).success);
+            await Assert.ThrowsAsync<Exception>(() => client.Messages.Report(44, "other"));
+            Assert.Equal(2, requests.Count);
+        }
+
+        /// <summary>Delivery/permission failures remain explicit in both reporting variants without automatic retries.</summary>
+        [Fact]
+        public async Task Messages_ReportPreservesDeliveryFailure()
+        {
+            const string json = "{\"result\":\"error\",\"msg\":\"Failed to send moderation request\"}";
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests, json, json);
+            var result = await client.Messages.TryReport(43, "spam");
+            Assert.False(result.success);
+            Assert.Contains("Failed to send moderation request", result.details);
+            await Assert.ThrowsAsync<Exception>(() => client.Messages.Report(43, "spam"));
+            Assert.Equal(2, requests.Count);
+        }
+
         /// <summary>One narrow update preserves the processed range and request-local diagnostics without looping.</summary>
         [Fact]
         public async Task Messages_UpdateFlagsForNarrow_PreservesProgress()

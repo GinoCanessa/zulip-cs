@@ -15,7 +15,7 @@ using zulip_cs_lib.Resources;
 namespace zulip_cs_lib
 {
     /// <summary>A Zulip client.</summary>
-    public class ZulipClient
+    public partial class ZulipClient
     {
         /// <summary>The site.</summary>
         private string _site = null!;
@@ -73,6 +73,12 @@ namespace zulip_cs_lib
 
         /// <summary>The files resource.</summary>
         private Files _files = null!;
+
+        /// <summary>The channel folders resource.</summary>
+        private ChannelFolders _channelFolders = null!;
+
+        /// <summary>The bot-account storage resource.</summary>
+        private BotStorage _botStorage = null!;
 
         /// <summary>The bounded upload timeout.</summary>
         private TimeSpan _uploadTimeout = TimeSpan.FromSeconds(100);
@@ -324,26 +330,36 @@ namespace zulip_cs_lib
         /// <summary>Gets the streaming upload and attachment interface.</summary>
         public Files Files => _files;
 
+        /// <summary>Gets channel-folder administration.</summary>
+        public ChannelFolders ChannelFolders => _channelFolders;
+
+        /// <summary>Gets bot-account key/value storage.</summary>
+        public BotStorage BotStorage => _botStorage;
+
         /// <summary>Initializes all resource classes.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
         /// <param name="doUpload">The focused streaming upload delegate.</param>
         private void InitializeResources(
             Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest,
-            Func<Stream, string, string, CancellationToken, Task<ZulipResponse>> doUpload)
+            MultipartUploadDelegate doUpload)
         {
             _messages = new Messages(doZulipRequest);
             _channels = new Channels(doZulipRequest);
-            _users = new Users(doZulipRequest);
+            _users = new Users(doZulipRequest, doUpload);
             _server = new Server(doZulipRequest);
             _events = new Events(doZulipRequest);
             _scheduledMessages = new ScheduledMessages(doZulipRequest);
             _drafts = new Drafts(doZulipRequest);
             _invitations = new Invitations(doZulipRequest);
-            _organization = new Organization(doZulipRequest);
+            _organization = new Organization(doZulipRequest, doUpload);
             _savedSnippets = new SavedSnippets(doZulipRequest);
             _reminders = new Reminders(doZulipRequest);
             _navigationViews = new NavigationViews(doZulipRequest);
-            _files = new Files(doZulipRequest, doUpload);
+            _files = new Files(doZulipRequest,
+                (stream, filename, contentType, token) =>
+                    doUpload("api/v1/user_uploads", "filename", stream, filename, contentType, token));
+            _channelFolders = new ChannelFolders(doZulipRequest);
+            _botStorage = new BotStorage(doZulipRequest);
         }
 
         /// <summary>Fetches an API key from the server using username and password.</summary>
@@ -406,11 +422,13 @@ namespace zulip_cs_lib
         }
 
         /// <summary>Creates identical streaming multipart content for both upload transports.</summary>
+        /// <param name="fieldName">The multipart file field name.</param>
         /// <param name="stream">The caller-owned input stream.</param>
         /// <param name="filename">The multipart filename.</param>
         /// <param name="contentType">The validated MIME content type.</param>
         /// <returns>The disposable content, which never owns the input stream.</returns>
-        private static MultipartFormDataContent CreateUploadContent(Stream stream, string filename, string contentType)
+        private static MultipartFormDataContent CreateUploadContent(
+            string fieldName, Stream stream, string filename, string contentType)
         {
             MultipartFormDataContent multipart = new MultipartFormDataContent();
             StreamContent file = new StreamContent(new NonDisposingStream(stream));
@@ -419,7 +437,7 @@ namespace zulip_cs_lib
                 file.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
                 ContentDispositionHeaderValue disposition = new ContentDispositionHeaderValue("form-data")
                 {
-                    Name = "filename"
+                    Name = fieldName
                 };
                 // The FileName setter rejects embedded quotes even when escaped. Set the validated quoted parameter directly.
                 string encodedFilename = filename.Any(character => character > 127)
@@ -440,13 +458,15 @@ namespace zulip_cs_lib
         }
 
         /// <summary>Uploads streaming multipart content through HttpClient with bounded cancellation.</summary>
+        /// <param name="endpoint">The API-relative POST endpoint.</param>
+        /// <param name="fieldName">The multipart file field.</param>
         /// <param name="stream">The readable caller-owned stream.</param>
         /// <param name="filename">The multipart filename.</param>
         /// <param name="contentType">The validated MIME content type.</param>
         /// <param name="cancellationToken">Caller cancellation.</param>
         /// <returns>The response and actual HTTP diagnostics.</returns>
         private async Task<ZulipResponse> DoZulipUploadHttpClient(
-            Stream stream, string filename, string contentType, CancellationToken cancellationToken)
+            string endpoint, string fieldName, Stream stream, string filename, string contentType, CancellationToken cancellationToken)
         {
             TimeSpan timeout = UploadTimeout;
             using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -455,9 +475,9 @@ namespace zulip_cs_lib
             try
             {
                 deadline.Token.ThrowIfCancellationRequested();
-                using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, new Uri(_siteUri, "api/v1/user_uploads"));
+                using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, new Uri(_siteUri, endpoint));
                 request.Headers.Add("Authorization", _authHeader);
-                request.Content = CreateUploadContent(stream, filename, contentType);
+                request.Content = CreateUploadContent(fieldName, stream, filename, contentType);
                 using HttpResponseMessage response = await _httpClient!.SendAsync(
                     request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
                 result.HttpResponseCode = (int)response.StatusCode;
@@ -481,13 +501,15 @@ namespace zulip_cs_lib
         }
 
         /// <summary>Uploads the .NET multipart serialization directly to curl's binary stdin.</summary>
+        /// <param name="endpoint">The API-relative POST endpoint.</param>
+        /// <param name="fieldName">The multipart file field.</param>
         /// <param name="stream">The readable caller-owned stream.</param>
         /// <param name="filename">The multipart filename.</param>
         /// <param name="contentType">The validated MIME content type.</param>
         /// <param name="cancellationToken">Caller cancellation.</param>
         /// <returns>The response with the actual body, HTTP status and process diagnostics.</returns>
         private async Task<ZulipResponse> DoZulipUploadCurl(
-            Stream stream, string filename, string contentType, CancellationToken cancellationToken)
+            string endpoint, string fieldName, Stream stream, string filename, string contentType, CancellationToken cancellationToken)
         {
             TimeSpan timeout = UploadTimeout;
             using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -502,9 +524,9 @@ namespace zulip_cs_lib
             try
             {
                 deadline.Token.ThrowIfCancellationRequested();
-                using MultipartFormDataContent multipart = CreateUploadContent(stream, filename, contentType);
+                using MultipartFormDataContent multipart = CreateUploadContent(fieldName, stream, filename, contentType);
                 string suffix = "\nZULIP_UPLOAD_STATUS_" + Guid.NewGuid().ToString("N") + ":";
-                ProcessStartInfo start = BuildCurlStartInfo(HttpMethod.Post, "api/v1/user_uploads", null);
+                ProcessStartInfo start = BuildCurlStartInfo(HttpMethod.Post, endpoint, null);
                 start.RedirectStandardInput = true;
                 start.ArgumentList.Add("--http1.1");
                 start.ArgumentList.Add("--upload-file");

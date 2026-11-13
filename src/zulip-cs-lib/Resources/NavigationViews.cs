@@ -217,19 +217,7 @@ namespace zulip_cs_lib.Resources
         /// <param name="encoded">The encoded slash-delimited path.</param>
         /// <returns>Whether the fragment can be represented safely.</returns>
         private static bool TryEncodeFragment(string fragment, out string encoded)
-        {
-            encoded = string.Empty;
-            if (string.IsNullOrWhiteSpace(fragment)) return false;
-            string[] segments = fragment.Split('/');
-            for (int index = 0; index < segments.Length; index++)
-            {
-                if (string.IsNullOrEmpty(segments[index]) || segments[index] is "." or "..") return false;
-                segments[index] = Uri.EscapeDataString(segments[index]);
-            }
-
-            encoded = string.Join("/", segments);
-            return true;
-        }
+            => ApiPath.TryEncodeSegments(fragment, out encoded);
 
         /// <summary>Requires the fragment identity and pin state on listed views.</summary>
         /// <param name="views">The views array.</param>

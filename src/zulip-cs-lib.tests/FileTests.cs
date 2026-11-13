@@ -30,6 +30,65 @@ namespace zulip_set_lib.tests
         /// <summary>The test-only key sensitive to command-line argument quoting.</summary>
         private const string Key = "test \"key with spaces\" + \u00e9";
 
+        /// <summary>File helpers preserve reserved filename characters and actual false/true readiness without polling.</summary>
+        [Fact]
+        public async Task Files_TemporaryUrlAndThumbnailPreservePathAndState()
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests,
+                "{\"result\":\"success\",\"url\":\"/user_uploads/temporary/token\"}",
+                "{\"result\":\"success\",\"has_thumbnail\":false}",
+                "{\"result\":\"success\",\"has_thumbnail\":true}");
+            const string path = "1/ab/token/file + #?.png";
+            Assert.Equal("/user_uploads/temporary/token", await client.Files.GetTemporaryUrl(path));
+            Assert.False(await client.Files.CheckThumbnailStatus(path));
+            Assert.True(await client.Files.CheckThumbnailStatus(path));
+            Assert.Equal(3, requests.Count);
+            Assert.Equal("/api/v1/user_uploads/1/ab/token/file%20%2B%20%23%3F.png",
+                requests[0].RequestUri!.AbsolutePath);
+            Assert.Equal("/api/v1/thumbnail/status/1/ab/token/file%20%2B%20%23%3F.png",
+                requests[1].RequestUri!.AbsolutePath);
+            Assert.All(requests, request =>
+            {
+                Assert.Equal(HttpMethod.Get, request.Method);
+                Assert.Empty(request.RequestUri!.Query);
+                Assert.Null(request.Content);
+            });
+        }
+
+        /// <summary>Missing/wrong helper results fail explicitly rather than inventing a URL or false success.</summary>
+        /// <param name="json">The response envelope.</param>
+        [Theory]
+        [InlineData("{\"result\":\"success\"}")]
+        [InlineData("{\"result\":\"success\",\"url\":\"\",\"has_thumbnail\":null}")]
+        [InlineData("{\"result\":\"success\",\"url\":false,\"has_thumbnail\":\"false\"}")]
+        [InlineData("{\"result\":\"error\",\"msg\":\"No access\"}")]
+        public async Task Files_HelpersRejectMalformedOrFailedResults(string json)
+        {
+            ZulipClient client = Utils.CreateCapturingClient([], json, json, json, json);
+            Assert.False((await client.Files.TryGetTemporaryUrl("1/a/file.png")).success);
+            await Assert.ThrowsAsync<Exception>(() => client.Files.GetTemporaryUrl("1/a/file.png"));
+            Assert.False((await client.Files.TryCheckThumbnailStatus("1/a/file.png")).success);
+            await Assert.ThrowsAsync<Exception>(() => client.Files.CheckThumbnailStatus("1/a/file.png"));
+        }
+
+        /// <summary>Invalid attachment paths never reach either endpoint.</summary>
+        /// <param name="path">The invalid logical attachment path.</param>
+        [Theory]
+        [InlineData("/user_uploads/1/a/file.png")]
+        [InlineData("0/a/file.png")]
+        [InlineData("1")]
+        [InlineData("1//file.png")]
+        [InlineData("1/a/../file.png")]
+        public async Task Files_HelpersRejectInvalidPathsWithoutRequests(string path)
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests);
+            Assert.False((await client.Files.TryGetTemporaryUrl(path)).success);
+            Assert.False((await client.Files.TryCheckThumbnailStatus(path)).success);
+            Assert.Empty(requests);
+        }
+
         /// <summary>HTTP serializes exact binary multipart bytes and disposes content without disposing the caller stream.</summary>
         /// <param name="seekable">Whether the caller exposes its remaining length.</param>
         [Theory]
@@ -374,6 +433,67 @@ namespace zulip_set_lib.tests
                 deadline.Cancel();
                 listener.Stop();
             }
+        }
+
+        /// <summary>Avatar/emoji use the actual focused multipart route on both backends without upload-only result requirements.</summary>
+        /// <param name="avatar">Whether to upload an avatar rather than emoji.</param>
+        [Theory(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task Files_ImageUploadsPreserveBackendRoutingAndOwnership(bool avatar)
+        {
+            using CancellationTokenSource deadline = TestDeadline();
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                string site = LoopbackSite(listener);
+                byte[] payload = BinaryPayload();
+                string body = avatar
+                    ? "{\"result\":\"success\",\"avatar_url\":\"/user_avatars/1/image.png\"}"
+                    : "{\"result\":\"success\"}";
+                using HttpClient http = new HttpClient(new HttpClientHandler { UseProxy = false });
+                ZulipClient httpClient = new ZulipClient(site, Email, Key, http) { UploadTimeout = TimeSpan.FromSeconds(10) };
+                ZulipClient curlClient = new ZulipClient(site, Email, Key, "curl") { UploadTimeout = TimeSpan.FromSeconds(10) };
+                using UploadStream httpInput = new UploadStream(payload, false);
+                using UploadStream curlInput = new UploadStream(payload, false);
+                Task<WireRequest> firstCapture = ReceiveAndRespond(listener, body, 200, deadline.Token);
+                await UploadImage(httpClient, avatar, httpInput, deadline.Token);
+                WireRequest first = await firstCapture;
+                Task<WireRequest> secondCapture = ReceiveAndRespond(listener, body, 200, deadline.Token);
+                await UploadImage(curlClient, avatar, curlInput, deadline.Token);
+                WireRequest second = await secondCapture;
+                Assert.Equal("POST", second.Method);
+                Assert.Equal(avatar ? "/api/v1/users/me/avatar" : "/api/v1/realm/emoji/smile%2Btest", second.Target);
+                Assert.Equal(first.Target, second.Target);
+                Assert.Equal(NormalizedMultipart(first), NormalizedMultipart(second));
+                string disposition = Encoding.UTF8.GetString(second.Body).Split("\r\n")
+                    .Single(line => line.StartsWith("Content-Disposition: ", StringComparison.Ordinal));
+                Assert.Equal(avatar ? "file" : "filename", ContentDispositionHeaderValue.Parse(
+                    disposition.Substring("Content-Disposition: ".Length)).Name);
+                Assert.Equal(200, curlClient.LastResponse!.HttpResponseCode);
+                Assert.Equal(body, curlClient.LastResponse.HttpResponseBody);
+                Assert.False(httpInput.Disposed);
+                Assert.False(curlInput.Disposed);
+            }
+            finally
+            {
+                deadline.Cancel();
+                listener.Stop();
+            }
+        }
+
+        /// <summary>Runs the public image upload without depending on its result type.</summary>
+        /// <param name="client">The selected real backend.</param>
+        /// <param name="avatar">Whether to upload an avatar.</param>
+        /// <param name="stream">The caller-owned stream.</param>
+        /// <param name="token">The bounded test cancellation token.</param>
+        private static async Task UploadImage(ZulipClient client, bool avatar, Stream stream, CancellationToken token)
+        {
+            if (avatar)
+                await client.Users.UploadAvatar(stream, "binary \"\u96ea\".dat", cancellationToken: token);
+            else
+                await client.Organization.UploadCustomEmoji("smile+test", stream, "binary \"\u96ea\".dat", cancellationToken: token);
         }
 
         /// <summary>An early HTTP rejection takes precedence over a broken binary stdin pipe and retains the actual error body/status.</summary>

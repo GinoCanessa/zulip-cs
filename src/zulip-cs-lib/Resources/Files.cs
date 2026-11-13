@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,19 +46,9 @@ namespace zulip_cs_lib.Resources
         public async Task<(bool success, string? details, FileUploadResult? result)> TryUpload(
             Stream stream, string filename, string? contentType = null, CancellationToken cancellationToken = default)
         {
-            if (stream == null || !stream.CanRead)
-            {
-                return (false, "Files.Upload failed: stream must be readable.", null);
-            }
-            if (string.IsNullOrWhiteSpace(filename) || filename.Any(char.IsControl))
-            {
-                return (false, "Files.Upload failed: filename must be nonempty and contain no control characters.", null);
-            }
+            string? error = MultipartUpload.Validate(stream, filename, contentType);
+            if (error != null) return (false, "Files.Upload failed: " + error, null);
             string mediaType = contentType ?? "application/octet-stream";
-            if (mediaType.Any(char.IsControl) || !MediaTypeHeaderValue.TryParse(mediaType, out _))
-            {
-                return (false, "Files.Upload failed: contentType must be a valid MIME type without control characters.", null);
-            }
 
             ZulipResponse response = await _doUpload(stream, filename, mediaType, cancellationToken);
             if (!ResponsePayload.TryRead<string>(response, "Files.Upload", "url", JsonValueKind.String,
@@ -136,6 +125,74 @@ namespace zulip_cs_lib.Resources
         {
             (bool success, string? details) outcome = await TryDelete(attachmentId);
             if (!outcome.success) throw new Exception(outcome.details);
+        }
+
+        /// <summary>Gets an immediately usable unauthenticated temporary URL for a logical attachment path (FL1).</summary>
+        /// <remarks>Do not persist this URL. Its lifetime is server-configured and generally 60 seconds.</remarks>
+        /// <param name="pathId">The complete logical path_id, including realm ID, not an upload URL.</param>
+        /// <returns>The temporary URL, or explicit failure.</returns>
+        public async Task<(bool success, string? details, string? url)> TryGetTemporaryUrl(string pathId)
+        {
+            if (!TryEncodeAttachmentPath(pathId, out string path))
+                return (false, "Files.GetTemporaryUrl failed: pathId must contain a positive realm ID and nonempty, non-traversal file segments.", null);
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/user_uploads/" + path, null);
+            return ResponsePayload.TryRead<string>(response, "Files.GetTemporaryUrl", "url", JsonValueKind.String,
+                out string? url, out string? details,
+                value => string.IsNullOrWhiteSpace(value.GetString()) ? "url must be nonempty." : null)
+                ? (true, null, url)
+                : (false, details, null);
+        }
+
+        /// <summary>Gets an ephemeral public URL, throwing on failure (FL1).</summary>
+        /// <param name="pathId">The complete logical attachment path_id.</param>
+        /// <returns>The temporary URL, which should be used immediately and not stored.</returns>
+        public async Task<string> GetTemporaryUrl(string pathId)
+        {
+            var result = await TryGetTemporaryUrl(pathId);
+            if (!result.success) throw new Exception(result.details);
+            return result.url!;
+        }
+
+        /// <summary>Checks once whether an attachment thumbnail exists (FL479).</summary>
+        /// <remarks>False is a successful not-ready state; polling policy belongs to the caller.</remarks>
+        /// <param name="pathId">The complete logical attachment path_id.</param>
+        /// <returns>The actual thumbnail state, or explicit failure.</returns>
+        public async Task<(bool success, string? details, bool hasThumbnail)> TryCheckThumbnailStatus(string pathId)
+        {
+            if (!TryEncodeAttachmentPath(pathId, out string path))
+                return (false, "Files.CheckThumbnailStatus failed: pathId must contain a positive realm ID and nonempty, non-traversal file segments.", false);
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/thumbnail/status/" + path, null);
+            if (!ResponsePayload.TryRead<JsonElement>(response, "Files.CheckThumbnailStatus", null,
+                JsonValueKind.Object, out JsonElement value, out string? details,
+                root => root.TryGetProperty("has_thumbnail", out JsonElement thumbnail) &&
+                    thumbnail.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? null : "required field 'has_thumbnail' must be a boolean."))
+                return (false, details, false);
+            return (true, null, value.GetProperty("has_thumbnail").GetBoolean());
+        }
+
+        /// <summary>Checks thumbnail readiness once, throwing on failure (FL479).</summary>
+        /// <param name="pathId">The complete logical attachment path_id.</param>
+        /// <returns>True when the thumbnail exists; false when not ready.</returns>
+        public async Task<bool> CheckThumbnailStatus(string pathId)
+        {
+            var result = await TryCheckThumbnailStatus(pathId);
+            if (!result.success) throw new Exception(result.details);
+            return result.hasThumbnail;
+        }
+
+        /// <summary>Validates a complete logical attachment identity and encodes its catch-all path.</summary>
+        /// <param name="pathId">The attachment identity.</param>
+        /// <param name="encoded">The encoded identity.</param>
+        /// <returns>Whether the path has an integer realm ID and valid file segments.</returns>
+        private static bool TryEncodeAttachmentPath(string pathId, out string encoded)
+        {
+            encoded = string.Empty;
+            if (pathId == null) return false;
+            int slash = pathId.IndexOf('/');
+            return slash > 0 && int.TryParse(pathId.AsSpan(0, slash), NumberStyles.None,
+                CultureInfo.InvariantCulture, out int realmId) && realmId > 0 &&
+                ApiPath.TryEncodeSegments(pathId, out encoded);
         }
 
         /// <summary>Requires a nonempty server-relative upload link rather than a legacy uri or absolute URL.</summary>

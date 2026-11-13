@@ -8,7 +8,7 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib.Resources
 {
     /// <summary>Channels (streams) resource.</summary>
-    public class Channels
+    public partial class Channels
     {
         /// <summary>The streams API endpoint.</summary>
         private const string _streamsApiEndpoint = "api/v1/streams";
