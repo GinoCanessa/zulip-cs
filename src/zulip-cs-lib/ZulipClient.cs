@@ -348,14 +348,21 @@ namespace zulip_cs_lib
                 HttpResponseMessage response = await client.SendAsync(request);
                 string body = await response.Content.ReadAsStringAsync();
 
-                ZulipResponse zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
+                ZulipResponse zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)
+                    ?? throw new JsonException("The Zulip response must be a JSON object.");
 
-                if (zulipResponse.Result == ZulipResponse.ZulipResultSuccess)
+                zulipResponse.HttpResponseCode = (int)response.StatusCode;
+                if (ResponsePayload.TryRead(zulipResponse, "FetchApiKey", "api_key", JsonValueKind.String,
+                    out string? apiKey, out string? details,
+                    value => string.IsNullOrWhiteSpace(value.GetString()) ? "api_key must be nonempty." : null) &&
+                    ResponsePayload.TryRead(zulipResponse, "FetchApiKey", "email", JsonValueKind.String,
+                    out string? email, out details,
+                    value => string.IsNullOrWhiteSpace(value.GetString()) ? "email must be nonempty." : null))
                 {
-                    return (true, null, zulipResponse.ApiKey, zulipResponse.FetchedEmail);
+                    return (true, null, apiKey!, email!);
                 }
 
-                return (false, "FetchApiKey failed: " + zulipResponse.GetFailureMessage(), null, null);
+                return (false, details, null, null);
             }
             catch (Exception ex)
             {
@@ -407,7 +414,8 @@ namespace zulip_cs_lib
 
                 try
                 {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
+                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)
+                        ?? throw new JsonException("The Zulip response must be a JSON object.");
                     zulipResponse.Success = zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
                         string.IsNullOrEmpty(zulipResponse.CaughtException);
                 }
@@ -527,7 +535,8 @@ namespace zulip_cs_lib
 
                 try
                 {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
+                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)
+                        ?? throw new JsonException("The Zulip response must be a JSON object.");
 
                     zulipResponse.Success = response.IsSuccessStatusCode &&
                         zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&

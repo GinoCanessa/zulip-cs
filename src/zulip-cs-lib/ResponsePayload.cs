@@ -6,6 +6,16 @@ namespace zulip_cs_lib
     /// <summary>Validates required endpoint payloads inside resources, including injected request delegates.</summary>
     internal static class ResponsePayload
     {
+        /// <summary>Checks the API result, parse errors and any known HTTP status without requiring transport flags from injected delegates.</summary>
+        /// <param name="response">The completed response.</param>
+        /// <returns>Whether the envelope represents a successful request.</returns>
+        internal static bool IsSuccessful(ZulipResponse response)
+        {
+            return response.Result == ZulipResponse.ZulipResultSuccess &&
+                string.IsNullOrEmpty(response.CaughtException) &&
+                (response.HttpResponseCode == 0 || response.HttpResponseCode is >= 200 and < 300);
+        }
+
         /// <summary>Reads a required field, or the root when field is null, without substituting CLR defaults.</summary>
         /// <remarks>
         /// Success requires result=success and no caught exception; the transport-only Success flag is not required.
@@ -26,7 +36,7 @@ namespace zulip_cs_lib
         {
             value = default;
             details = null;
-            if (response.Result != ZulipResponse.ZulipResultSuccess || !string.IsNullOrEmpty(response.CaughtException))
+            if (!IsSuccessful(response))
             {
                 details = operation + " failed: " + response.GetFailureMessage();
                 return false;
@@ -115,6 +125,25 @@ namespace zulip_cs_lib
                 if (element.ValueKind != kind)
                 {
                     return $"required collection elements must be {kind}.";
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Validates required integer identities on collection objects while preserving legitimate empty arrays.</summary>
+        /// <param name="array">The returned object array.</param>
+        /// <param name="field">The required identity field.</param>
+        /// <returns>A validation error, or null.</returns>
+        internal static string? ValidateObjectIds(JsonElement array, string field)
+        {
+            foreach (JsonElement item in array.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !item.TryGetProperty(field, out JsonElement id) ||
+                    id.ValueKind != JsonValueKind.Number || !id.TryGetInt64(out _))
+                {
+                    return $"required collection field '{field}' must be an integer.";
                 }
             }
 

@@ -29,7 +29,8 @@ namespace zulip_cs_lib
         internal static (bool success, string? details, BatchOperationResult? batch) Read(
             ZulipResponse response, string operation)
         {
-            if (response.Result == "partially_completed" && string.IsNullOrEmpty(response.CaughtException))
+            if (response.Result == "partially_completed" && string.IsNullOrEmpty(response.CaughtException) &&
+                (response.HttpResponseCode == 0 || response.HttpResponseCode is >= 200 and < 300))
             {
                 return (true, null, new BatchOperationResult(false, response));
             }

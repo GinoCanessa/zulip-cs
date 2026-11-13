@@ -1,37 +1,18 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip subscription.</summary>
     /// <remarks>
-    /// Feature levels 392, 404, and 441 expanded subscription objects with newer policy and group-setting fields.
-    /// This model keeps a stable subset of commonly consumed subscription properties.
+    /// Inherits channel metadata and permission settings, adding the user's subscription preferences.
+    /// Nullable notification preferences inherit their user-level defaults when null.
     /// </remarks>
-    public class SubscriptionObject
+    public class SubscriptionObject : StreamObject
     {
-        /// <summary>Gets or sets the stream ID.</summary>
-        [JsonPropertyName("stream_id")]
-        public int StreamId { get; set; }
-
-        /// <summary>Gets or sets the name.</summary>
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
-
-        /// <summary>Gets or sets the description.</summary>
-        [JsonPropertyName("description")]
-        public string? Description { get; set; }
-
-        /// <summary>Gets or sets the rendered description.</summary>
-        [JsonPropertyName("rendered_description")]
-        public string? RenderedDescription { get; set; }
-
         /// <summary>Gets or sets the color.</summary>
         [JsonPropertyName("color")]
         public string? Color { get; set; }
-
-        /// <summary>Gets or sets a value indicating whether this is invite only.</summary>
-        [JsonPropertyName("invite_only")]
-        public bool? InviteOnly { get; set; }
 
         /// <summary>Gets or sets the pin to top flag.</summary>
         [JsonPropertyName("pin_to_top")]
@@ -60,5 +41,18 @@ namespace zulip_cs_lib.Models
         /// <summary>Gets or sets the email address.</summary>
         [JsonPropertyName("email_address")]
         public string? EmailAddress { get; set; }
+
+        /// <summary>Gets or sets whether wildcard mentions trigger personal-mention notifications.</summary>
+        [JsonPropertyName("wildcard_mentions_notify")]
+        public bool? WildcardMentionsNotify { get; set; }
+
+        /// <summary>Gets or sets all subscriber user IDs when requested.</summary>
+        [JsonPropertyName("subscribers")]
+        public List<int>? Subscribers { get; set; }
+
+        /// <summary>Gets or sets a server-selected subset of subscriber IDs when partial data was requested.</summary>
+        /// <remarks>This is not the full membership list; it includes bots and recently active users.</remarks>
+        [JsonPropertyName("partial_subscribers")]
+        public List<int>? PartialSubscribers { get; set; }
     }
 }

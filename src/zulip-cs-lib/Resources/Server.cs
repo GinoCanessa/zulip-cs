@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace zulip_cs_lib.Resources
@@ -29,12 +30,20 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/server_settings", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (!ResponsePayload.TryRead(response, "Server.GetSettings", "zulip_version", JsonValueKind.String,
+                out string? version, out string? details,
+                value => string.IsNullOrWhiteSpace(value.GetString()) ? "zulip_version must be nonempty." : null))
             {
-                return (true, null, response.ZulipVersion, response.ZulipFeatureLevel);
+                return (false, details, null, null);
             }
 
-            return (false, "Server.GetSettings failed: " + response.GetFailureMessage(), null, null);
+            if (!ResponsePayload.TryRead(response, "Server.GetSettings", "zulip_feature_level", JsonValueKind.Number,
+                out int featureLevel, out details))
+            {
+                return (false, details, null, null);
+            }
+
+            return (true, null, version!, featureLevel);
         }
 
         /// <summary>Gets server settings (throwing version).</summary>

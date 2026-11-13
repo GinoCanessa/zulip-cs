@@ -5,12 +5,35 @@ using System.Threading.Tasks;
 using Moq;
 using Xunit;
 using zulip_cs_lib;
+using zulip_cs_lib.Models;
 
 namespace zulip_set_lib.tests
 {
     /// <summary>Tests for SavedSnippets resource.</summary>
     public class SavedSnippetTests
     {
+        /// <summary>Does not replace missing snippet data with a successful empty result.</summary>
+        /// <param name="fields">The response fields.</param>
+        /// <param name="expectedSuccess">Whether the payload is valid.</param>
+        [Theory]
+        [InlineData("", false)]
+        [InlineData(",\"saved_snippets\":null", false)]
+        [InlineData(",\"saved_snippets\":{}", false)]
+        [InlineData(",\"saved_snippets\":[{}]", false)]
+        [InlineData(",\"saved_snippets\":[]", true)]
+        public async Task SavedSnippets_GetAll_ValidatesPayload(string fields, bool expectedSuccess)
+        {
+            ZulipClient client = Utils.CreateCapturingClient([], $"{{\"result\":\"success\"{fields}}}");
+            (bool success, string? details, List<SavedSnippetObject>? snippets) actual = await client.SavedSnippets.TryGetAll();
+            Assert.Equal(expectedSuccess, actual.success);
+            if (expectedSuccess) Assert.Empty(actual.snippets!);
+            else
+            {
+                Assert.Null(actual.snippets);
+                Assert.Contains("SavedSnippets.GetAll failed:", actual.details);
+            }
+        }
+
         [Fact]
         public async Task SavedSnippets_GetAll_Success()
         {

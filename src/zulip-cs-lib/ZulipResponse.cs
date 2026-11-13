@@ -25,6 +25,12 @@ namespace zulip_cs_lib
         /// <summary>The caller-supplied legacy presence dictionary.</summary>
         private Dictionary<string, PresenceInfo>? _presence;
 
+        /// <summary>The wire realm-presence dictionary, including modern scalar timestamps.</summary>
+        private JsonElement? _presencesPayload;
+
+        /// <summary>The caller-supplied legacy realm-presence dictionary.</summary>
+        private Dictionary<string, Dictionary<string, PresenceInfo>>? _presences;
+
         /// <summary>The owned response snapshot.</summary>
         private JsonElement _rawPayload;
 
@@ -304,21 +310,7 @@ namespace zulip_cs_lib
                 if (_presence == null && _presencePayload is JsonElement payload &&
                     payload.ValueKind == JsonValueKind.Object)
                 {
-                    Dictionary<string, PresenceInfo> legacy = [];
-                    foreach (JsonProperty property in payload.EnumerateObject())
-                    {
-                        if (property.Value.ValueKind == JsonValueKind.Object &&
-                            property.Value.TryGetProperty("status", out _) &&
-                            property.Value.TryGetProperty("timestamp", out _))
-                        {
-                            legacy.Add(property.Name, property.Value.Deserialize<PresenceInfo>()!);
-                        }
-                    }
-
-                    if (legacy.Count != 0 || !payload.EnumerateObject().Any())
-                    {
-                        _presence = legacy;
-                    }
+                    _presence = ReadLegacyPresence(payload);
                 }
 
                 return _presence;
@@ -342,9 +334,69 @@ namespace zulip_cs_lib
             }
         }
 
-        /// <summary>Gets or sets the presences data for realm presence.</summary>
+        /// <summary>Gets or sets actual legacy realm-presence entries. Modern-only data is available in registration details and RawPayload.</summary>
+        [JsonIgnore]
+        public Dictionary<string, Dictionary<string, PresenceInfo>>? Presences
+        {
+            get
+            {
+                if (_presences == null && _presencesPayload is JsonElement payload &&
+                    payload.ValueKind == JsonValueKind.Object)
+                {
+                    Dictionary<string, Dictionary<string, PresenceInfo>> legacy = [];
+                    foreach (JsonProperty user in payload.EnumerateObject())
+                    {
+                        if (user.Value.ValueKind != JsonValueKind.Object)
+                        {
+                            throw new JsonException("Realm presence entries must be objects.");
+                        }
+
+                        Dictionary<string, PresenceInfo>? entries = ReadLegacyPresence(user.Value);
+                        if (entries != null) legacy.Add(user.Name, entries);
+                    }
+
+                    if (legacy.Count != 0 || !payload.EnumerateObject().Any()) _presences = legacy;
+                }
+
+                return _presences;
+            }
+            set
+            {
+                _presences = value;
+                _presencesPayload = null;
+            }
+        }
+
+        /// <summary>Gets or sets collision-safe realm presence on the wire.</summary>
         [JsonPropertyName("presences")]
-        public Dictionary<string, Dictionary<string, PresenceInfo>>? Presences { get; set; }
+        internal JsonElement? PresencesPayload
+        {
+            get => _presencesPayload ?? (_presences != null ? JsonSerializer.SerializeToElement(_presences) : null);
+            set
+            {
+                _presencesPayload = value?.Clone();
+                _presences = null;
+            }
+        }
+
+        /// <summary>Reads only server-provided legacy client entries without interpreting modern timestamps as objects.</summary>
+        /// <param name="payload">One user's presence object.</param>
+        /// <returns>The real legacy entries, an actual empty dictionary, or null for modern-only data.</returns>
+        private static Dictionary<string, PresenceInfo>? ReadLegacyPresence(JsonElement payload)
+        {
+            Dictionary<string, PresenceInfo> legacy = [];
+            foreach (JsonProperty property in payload.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.TryGetProperty("status", out _) &&
+                    property.Value.TryGetProperty("timestamp", out _))
+                {
+                    legacy.Add(property.Name, property.Value.Deserialize<PresenceInfo>()!);
+                }
+            }
+
+            return legacy.Count != 0 || !payload.EnumerateObject().Any() ? legacy : null;
+        }
 
         /// <summary>Gets or sets the legacy filter_id field. Current linkifier creation returns Id instead.</summary>
         [JsonPropertyName("filter_id")]
@@ -392,6 +444,11 @@ namespace zulip_cs_lib
             if (string.IsNullOrEmpty(Result))
             {
                 return $"HTTP request failed: {HttpResponseCode}";
+            }
+
+            if (HttpResponseCode != 0 && HttpResponseCode is not (>= 200 and < 300))
+            {
+                return $"HTTP request failed: {HttpResponseCode}, result: {Result}, message: {Message}";
             }
 
             return $"result: {Result}," +

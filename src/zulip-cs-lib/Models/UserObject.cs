@@ -1,11 +1,12 @@
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip user.</summary>
     /// <remarks>
-    /// Feature levels 433 and 437 updated user payload behavior and metadata across user-list and user-detail endpoints.
-    /// This model contains the core fields used by this library version.
+    /// Optional metadata varies with server capabilities and endpoint. Unknown fields are retained.
     /// </remarks>
     public class UserObject
     {
@@ -42,11 +43,28 @@ namespace zulip_cs_lib.Models
         public string? Timezone { get; set; }
 
         /// <summary>Gets or sets the date joined.</summary>
+        /// <remarks>
+        /// For imported stubs this is initially the import account creation time.
+        /// Starting at feature level 475 it is updated to the first login time when the stub becomes a regular user.
+        /// </remarks>
         [JsonPropertyName("date_joined")]
         public string? DateJoined { get; set; }
 
         /// <summary>Gets or sets the delivery email.</summary>
         [JsonPropertyName("delivery_email")]
         public string? DeliveryEmail { get; set; }
+
+        /// <summary>Gets or sets whether the user is an imported stub account that has not yet joined Zulip.</summary>
+        [JsonPropertyName("is_imported_stub")]
+        public bool? IsImportedStub { get; set; }
+
+        /// <summary>Gets or sets whether the user's account data has been permanently deleted.</summary>
+        /// <remarks>The server includes this field only when true; deleted users are also deactivated.</remarks>
+        [JsonPropertyName("is_deleted")]
+        public bool? IsDeleted { get; set; }
+
+        /// <summary>Gets or sets owned JSON fields not modeled by this client.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement> AdditionalProperties { get; set; } = [];
     }
 }

@@ -10,6 +10,46 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for ZulipResponse deserialization.</summary>
     public class ZulipResponseTests
     {
+        /// <summary>Realm presence uses collision-safe wire backing, not exception-message recovery.</summary>
+        [Fact]
+        public void ZulipResponse_RealmPresencePreservesModernAndLegacyWireData()
+        {
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>("""
+                {"result":"success","presences":{
+                  "10":{"active_timestamp":123,"idle_timestamp":124},
+                  "11":{"active_timestamp":125,"website":{"status":"active","timestamp":125}}
+                }}
+                """)!;
+            Assert.Null(response.CaughtException);
+            Assert.False(response.Presences!.ContainsKey("10"));
+            Assert.Equal("active", response.Presences["11"]["website"].Status);
+            JsonElement serialized = JsonSerializer.SerializeToElement(response);
+            Assert.Equal(123, serialized.GetProperty("presences").GetProperty("10").GetProperty("active_timestamp").GetInt32());
+            Assert.Equal(125, serialized.GetProperty("presences").GetProperty("11").GetProperty("website").GetProperty("timestamp").GetInt32());
+
+            ZulipResponse assigned = new ZulipResponse
+            {
+                Result = "success",
+                Presences = new Dictionary<string, Dictionary<string, PresenceInfo>>
+                {
+                    { "10", new Dictionary<string, PresenceInfo> { { "web", new PresenceInfo { Status = "idle", Timestamp = 20 } } } }
+                }
+            };
+            ZulipResponse roundTrip = JsonSerializer.Deserialize<ZulipResponse>(JsonSerializer.Serialize(assigned))!;
+            Assert.Equal("idle", roundTrip.Presences!["10"]["web"].Status);
+            Assert.Equal(20, roundTrip.Presences["10"]["web"].Timestamp);
+        }
+
+        /// <summary>A valid-looking envelope cannot override a known failed HTTP status.</summary>
+        [Fact]
+        public void ZulipResponse_RequiredFieldValidationHonorsHttpFailure()
+        {
+            ZulipResponse response = new ZulipResponse { Result = "success", Members = [], HttpResponseCode = 502 };
+            Assert.False(ResponsePayload.TryRead<List<UserObject>>(response, "Users.GetAll", "members",
+                JsonValueKind.Array, out _, out string? details));
+            Assert.Contains("502", details);
+        }
+
         [Fact]
         public void ZulipResponse_Deserialize_Success()
         {

@@ -20,6 +20,44 @@ namespace zulip_set_lib.tests
     /// <summary>Basic Zulip client tests.</summary>
     public class ZulipClientTests
     {
+        /// <summary>Non-object responses produce explicit Try failures instead of null dereferences.</summary>
+        /// <param name="body">The invalid response root.</param>
+        [Theory]
+        [InlineData("null")]
+        [InlineData("[]")]
+        [InlineData("true")]
+        public async Task ZulipClient_NonObjectBodyFailsExplicitly(string body)
+        {
+            ZulipClient client = Utils.CreateCapturingClient([], body);
+            (bool success, string? details, ulong messageId) actual = await client.Messages.TrySendStream("Hello", "Topic", "Channel");
+            Assert.False(actual.success);
+            Assert.Contains("JSON object", actual.details);
+            Assert.Equal(body, client.LastResponse!.HttpResponseBody);
+            Assert.False(client.LastResponse.Success);
+        }
+
+        /// <summary>API-key bootstrap validates both credentials rather than returning successful nulls.</summary>
+        /// <param name="fields">The invalid credential fields.</param>
+        [Theory]
+        [InlineData("")]
+        [InlineData(",\"api_key\":\"key\"")]
+        [InlineData(",\"email\":\"a@example.org\"")]
+        [InlineData(",\"api_key\":null,\"email\":\"a@example.org\"")]
+        public async Task ZulipClient_FetchApiKeyRequiresCredentials(string fields)
+        {
+            Assert.True(Utils.TryGetMockedClient(HttpStatusCode.OK, Utils.ContentForJsonString($"{{\"result\":\"success\"{fields}}}"),
+                out _, out HttpClient httpClient, out _));
+            using (httpClient)
+            {
+                (bool success, string? details, string? apiKey, string? email) actual =
+                    await ZulipClient.TryFetchApiKey("https://example.org", "a@example.org", "password", httpClient);
+                Assert.False(actual.success);
+                Assert.Contains("FetchApiKey failed:", actual.details);
+                Assert.Null(actual.apiKey);
+                Assert.Null(actual.email);
+            }
+        }
+
         private const string _email = "zulip@example.org";
         private const string _key = "KeyInBase64";
         private const string _site = "https://zulip.example.org";

@@ -13,6 +13,35 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Server resource.</summary>
     public class ServerTests
     {
+        /// <summary>Requires the version and feature level used for feature gating.</summary>
+        /// <param name="fields">The response fields.</param>
+        /// <param name="expectedSuccess">Whether both fields are valid.</param>
+        [Theory]
+        [InlineData("", false)]
+        [InlineData(",\"zulip_version\":\"12.0\"", false)]
+        [InlineData(",\"zulip_feature_level\":513", false)]
+        [InlineData(",\"zulip_version\":null,\"zulip_feature_level\":513", false)]
+        [InlineData(",\"zulip_version\":\"12.0\",\"zulip_feature_level\":\"513\"", false)]
+        [InlineData(",\"zulip_version\":\"12.0\",\"zulip_feature_level\":0", true)]
+        public async Task Server_GetSettings_ValidatesFeatureGate(string fields, bool expectedSuccess)
+        {
+            ZulipClient client = Utils.CreateCapturingClient([], $"{{\"result\":\"success\"{fields}}}");
+            (bool success, string? details, string? zulipVersion, int? featureLevel) actual =
+                await client.Server.TryGetSettings();
+            Assert.Equal(expectedSuccess, actual.success);
+            if (expectedSuccess)
+            {
+                Assert.Equal("12.0", actual.zulipVersion);
+                Assert.Equal(0, actual.featureLevel);
+            }
+            else
+            {
+                Assert.Null(actual.zulipVersion);
+                Assert.Null(actual.featureLevel);
+                Assert.Contains("Server.GetSettings failed:", actual.details);
+            }
+        }
+
         [Fact]
         public async Task Server_GetSettings_Success()
         {
