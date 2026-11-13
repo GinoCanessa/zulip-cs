@@ -8,6 +8,34 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for the Narrow class.</summary>
     public class NarrowTests
     {
+        /// <summary>Typed payloads retain exact property order, escaping and operand representations.</summary>
+        [Fact]
+        public void Narrow_TypedPayloadPreservesExactWireStrings()
+        {
+            Narrow text = new Narrow(Narrow.NarrowOperator.Topic, "<& \"\\ \u96ea", negated: true);
+            const string expected = "{\"operator\":\"topic\",\"operand\":\"\\u003C\\u0026 \\u0022\\\\ \\u96EA\",\"negated\":true}";
+            Assert.Equal(expected, text.ToJson());
+            Narrow number = new Narrow(Narrow.NarrowOperator.Channel, long.MaxValue);
+            Narrow array = new Narrow(Narrow.NarrowOperator.Dm, new long[] { -1, 0, long.MaxValue });
+            Assert.Equal("[" + expected +
+                ",{\"operator\":\"channel\",\"operand\":9223372036854775807,\"negated\":false}" +
+                ",{\"operator\":\"dm\",\"operand\":[-1,0,9223372036854775807],\"negated\":false}]",
+                Narrow.ToJsonArray(text, number, array));
+            Assert.Equal("{\"operator\":\"topic\",\"operand\":\"\",\"negated\":false}",
+                new Narrow(Narrow.NarrowOperator.Topic).ToJson());
+        }
+
+        /// <summary>Replacing intermediate dictionaries does not change empty or invalid input behavior.</summary>
+        [Fact]
+        public void Narrow_TypedPayloadPreservesEmptyAndInvalidInputs()
+        {
+            Assert.Equal("[]", Narrow.ToJsonArray(null!));
+            Assert.Equal("[]", Narrow.ToJsonArray([]));
+            Assert.Throws<NullReferenceException>(() => Narrow.ToJsonArray([null!]));
+            Assert.Throws<ArgumentException>(
+                () => Narrow.ToJsonArray(new Narrow(Narrow.NarrowOperator.Channels, "unsupported")));
+        }
+
         [Fact]
         public void Narrow_Channel_ToJson()
         {

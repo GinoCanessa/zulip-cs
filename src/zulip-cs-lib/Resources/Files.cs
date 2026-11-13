@@ -14,6 +14,12 @@ namespace zulip_cs_lib.Resources
     /// <summary>Streaming uploads and metadata/deletion for the requesting user's attachments.</summary>
     public sealed class Files
     {
+        /// <summary>The required attachment text fields, in validation order.</summary>
+        private static readonly string[] _attachmentTextFields = ["name", "path_id"];
+
+        /// <summary>The required attachment integer fields, in validation order.</summary>
+        private static readonly string[] _attachmentIntegerFields = ["size", "create_time"];
+
         /// <summary>The ordinary API request delegate.</summary>
         private readonly Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> _doZulipRequest;
 
@@ -226,12 +232,12 @@ namespace zulip_cs_lib.Resources
                     if (messageId.ValueKind != JsonValueKind.Number || !messageId.TryGetInt32(out _))
                         return "message_ids must contain integer IDs.";
                 }
-                foreach (string field in new string[] { "name", "path_id" })
+                foreach (string field in _attachmentTextFields)
                 {
                     if (!item.TryGetProperty(field, out JsonElement text) || text.ValueKind != JsonValueKind.String)
                         return $"attachments require string {field}.";
                 }
-                foreach (string field in new string[] { "size", "create_time" })
+                foreach (string field in _attachmentIntegerFields)
                 {
                     if (!item.TryGetProperty(field, out JsonElement number) ||
                         ValidateNonnegativeInteger(number, field) != null)

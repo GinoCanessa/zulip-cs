@@ -472,12 +472,13 @@ namespace zulip_cs_lib.Resources
         /// <summary>Requires a named object's actual wire field and one of its documented JSON kinds.</summary>
         /// <param name="item">The object.</param>
         /// <param name="field">The required field.</param>
-        /// <param name="kinds">The permitted JSON kinds.</param>
+        /// <param name="kind">The permitted JSON kind.</param>
+        /// <param name="alternateKind">An optional second permitted JSON kind.</param>
         /// <returns>A validation error, or null.</returns>
-        private static string? ValidateAdminField(JsonElement item, string field, params JsonValueKind[] kinds)
+        private static string? ValidateAdminField(JsonElement item, string field, JsonValueKind kind, JsonValueKind? alternateKind = null)
         {
             return item.ValueKind != JsonValueKind.Object || !item.TryGetProperty(field, out JsonElement value) ||
-                Array.IndexOf(kinds, value.ValueKind) < 0
+                (value.ValueKind != kind && value.ValueKind != alternateKind)
                 ? $"required object field '{field}' has a missing or invalid value."
                 : null;
         }

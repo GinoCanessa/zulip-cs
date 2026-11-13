@@ -6,6 +6,9 @@ namespace zulip_cs_lib
     /// <summary>Validates required endpoint payloads inside resources, including injected request delegates.</summary>
     internal static class ResponsePayload
     {
+        /// <summary>The required user identity strings, in validation order.</summary>
+        private static readonly string[] _userIdentityFields = ["email", "full_name"];
+
         /// <summary>Checks the API result, parse errors and any known HTTP status without requiring transport flags from injected delegates.</summary>
         /// <param name="response">The completed response.</param>
         /// <returns>Whether the envelope represents a successful request.</returns>
@@ -102,7 +105,7 @@ namespace zulip_cs_lib
                 return "required user field 'user_id' must be an integer.";
             }
 
-            foreach (string field in new string[] { "email", "full_name" })
+            foreach (string field in _userIdentityFields)
             {
                 if (!user.TryGetProperty(field, out JsonElement value) || value.ValueKind != JsonValueKind.String)
                 {
