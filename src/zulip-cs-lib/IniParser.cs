@@ -119,20 +119,15 @@ namespace zulip_cs_lib
                     continue;
                 }
 
-                // check for '=' as a separator
-                if (line.Contains('=', StringComparison.Ordinal))
-                {
-                    string[] lineContents = line.Split('=');
+                int equalsIndex = line.IndexOf('=');
+                int colonIndex = line.IndexOf(':');
+                int delimiterIndex = equalsIndex < 0
+                    ? colonIndex
+                    : colonIndex < 0 ? equalsIndex : Math.Min(equalsIndex, colonIndex);
 
-                    // first part is our key, use the original string in case there were additional delimters in the value
-                    sectionData.Add(lineContents[0].Trim(), line.Substring(lineContents[0].Length + 1).Trim());
-                }
-                else if (line.Contains(':', StringComparison.Ordinal))
+                if (delimiterIndex >= 0)
                 {
-                    string[] lineContents = line.Split(':');
-
-                    // first part is our key, use the original string in case there were additional delimters in the value
-                    sectionData.Add(lineContents[0].Trim(), line.Substring(lineContents[0].Length + 1).Trim());
+                    sectionData.Add(line.Substring(0, delimiterIndex).Trim(), line.Substring(delimiterIndex + 1).Trim());
                 }
             }
 
