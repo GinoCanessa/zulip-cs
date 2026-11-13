@@ -582,7 +582,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<MessageObject>>(response, "Messages.Get",
                 "messages", JsonValueKind.Array, out List<MessageObject>? messages, out string? details,
-                array => ResponsePayload.ValidateObjectIds(array, "id")))
+                array => ResponsePayload.ValidateObjectIds(array, "id"), response.TakeUnobservedMessages))
             {
                 return (true, null, messages, response.FoundNewest, response.FoundOldest);
             }

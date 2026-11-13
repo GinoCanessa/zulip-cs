@@ -34,6 +34,18 @@ namespace zulip_cs_lib
         /// <summary>The owned response snapshot.</summary>
         private JsonElement _rawPayload;
 
+        /// <summary>Synchronizes typed-message observation and one-time transfer.</summary>
+        private readonly object _messagesLock = new object();
+
+        /// <summary>The current typed diagnostic messages.</summary>
+        private List<MessageObject>? _messages;
+
+        /// <summary>The original owned messages field, used to rebuild independent diagnostics after transfer.</summary>
+        private JsonElement _messagesPayload;
+
+        /// <summary>Whether the default-options wire list has not been observed or assigned.</summary>
+        private bool _canTakeMessages;
+
         /// <summary>Explicitly assigned nonnullable wire integers, distinguishing missing fields from valid zero values.</summary>
         private readonly Dictionary<string, int> _assignedIntegers = [];
 
@@ -45,7 +57,14 @@ namespace zulip_cs_lib
         public JsonElement RawPayload
         {
             get => _rawPayload;
-            internal set => _rawPayload = value.ValueKind == JsonValueKind.Undefined ? default : value.Clone();
+            internal set
+            {
+                lock (_messagesLock)
+                {
+                    _rawPayload = value.ValueKind == JsonValueKind.Undefined ? default : value.Clone();
+                    _canTakeMessages = false;
+                }
+            }
         }
 
         /// <summary>Gets or sets unmodeled response fields.</summary>
@@ -112,7 +131,58 @@ namespace zulip_cs_lib
 
         /// <summary>Gets or sets the messages list.</summary>
         [JsonPropertyName("messages")]
-        public List<MessageObject>? Messages { get; set; }
+        public List<MessageObject>? Messages
+        {
+            get
+            {
+                lock (_messagesLock)
+                {
+                    _canTakeMessages = false;
+                    if (_messages == null && _messagesPayload.ValueKind == JsonValueKind.Array)
+                    {
+                        _messages = _messagesPayload.Deserialize<List<MessageObject>>();
+                    }
+                    return _messages;
+                }
+            }
+            set
+            {
+                lock (_messagesLock)
+                {
+                    _messages = value;
+                    _messagesPayload = default;
+                    _canTakeMessages = false;
+                }
+            }
+        }
+
+        /// <summary>Retains default-options wire messages for one unobserved resource read.</summary>
+        /// <param name="options">The options used to parse the typed envelope.</param>
+        internal void RetainUnobservedMessages(JsonSerializerOptions options)
+        {
+            lock (_messagesLock)
+            {
+                if (ReferenceEquals(options, JsonSerializerOptions.Default) && _messages != null)
+                {
+                    _messagesPayload = _rawPayload.GetProperty("messages");
+                    _canTakeMessages = true;
+                }
+            }
+        }
+
+        /// <summary>Transfers an unobserved wire list while retaining independent diagnostic state.</summary>
+        /// <returns>The transferable list, or null when authoritative deserialization is still required.</returns>
+        internal List<MessageObject>? TakeUnobservedMessages()
+        {
+            lock (_messagesLock)
+            {
+                if (!_canTakeMessages) return null;
+                List<MessageObject>? messages = _messages;
+                _messages = null;
+                _canTakeMessages = false;
+                return messages;
+            }
+        }
 
         /// <summary>Gets or sets the users list. Integer group-member payloads are not user objects and return null.</summary>
         [JsonIgnore]

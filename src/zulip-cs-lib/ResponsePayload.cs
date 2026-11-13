@@ -29,10 +29,12 @@ namespace zulip_cs_lib
         /// <param name="value">The parsed value.</param>
         /// <param name="details">The standard Try failure details.</param>
         /// <param name="validate">Optional endpoint-specific semantic validation.</param>
+        /// <param name="takeParsedValue">Optional equivalent unobserved typed value, used only after raw validation.</param>
         /// <returns>Whether the required value is valid.</returns>
         internal static bool TryRead<T>(
             ZulipResponse response, string operation, string? field, JsonValueKind kind,
-            out T? value, out string? details, Func<JsonElement, string?>? validate = null)
+            out T? value, out string? details, Func<JsonElement, string?>? validate = null,
+            Func<T?>? takeParsedValue = null)
         {
             value = default;
             details = null;
@@ -67,6 +69,11 @@ namespace zulip_cs_lib
                     throw new JsonException(validationError);
                 }
 
+                if (takeParsedValue != null)
+                {
+                    value = takeParsedValue();
+                    if (value is not null) return true;
+                }
                 value = payload.Deserialize<T>();
                 return true;
             }

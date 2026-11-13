@@ -2,18 +2,80 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using Moq.Protected;
 using Xunit;
 using zulip_cs_lib;
+using zulip_cs_lib.Models;
+using zulip_cs_lib.Resources;
 
 namespace zulip_set_lib.tests
 {
     /// <summary>A send message tests.</summary>
     public class MessageTests
     {
+        /// <summary>Resource results never share mutable message state with diagnostics or later reads.</summary>
+        [Fact]
+        public async Task Message_Get_PreservesIndependentDiagnosticsAndRepeatedReads()
+        {
+            const string json = "{\"result\":\"success\",\"messages\":[{\"id\":1,\"content\":\"original\"}]}";
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
+            Messages resource = new Messages((method, url, data) => Task.FromResult(response));
+            (bool success, string? details, List<MessageObject>? messages, bool? foundNewest, bool? foundOldest) first =
+                await resource.TryGet(Messages.GetAnchorMode.Newest);
+            Assert.True(first.success, first.details);
+            MessageObject returned = Assert.Single(first.messages!);
+            returned.Content = "changed";
+            MessageObject diagnostic = Assert.Single(response.Messages!);
+            Assert.Equal("original", diagnostic.Content);
+            Assert.NotSame(returned, diagnostic);
+            List<MessageObject> next = await resource.Get(Messages.GetAnchorMode.Newest);
+            Assert.Equal("original", Assert.Single(next).Content);
+            Assert.NotSame(first.messages, next);
+        }
+
+        /// <summary>Observed or explicitly reassigned typed messages cannot override the authoritative raw payload.</summary>
+        [Fact]
+        public async Task Message_Get_ObservedTypedMutationDoesNotOverrideRaw()
+        {
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                "{\"result\":\"success\",\"messages\":[{\"id\":1,\"content\":\"original\"}]}")!;
+            response.Messages![0].Content = "changed";
+            Messages resource = new Messages((method, url, data) => Task.FromResult(response));
+            Assert.Equal("original", Assert.Single(await resource.Get(Messages.GetAnchorMode.Newest)).Content);
+            response.Messages = [new MessageObject { Id = 2, Content = "assigned" }];
+            Assert.Equal((ulong)1, Assert.Single(await resource.Get(Messages.GetAnchorMode.Newest)).Id);
+            Assert.Equal("assigned", Assert.Single(response.Messages).Content);
+        }
+
+        /// <summary>Replacing raw diagnostics invalidates any pre-parsed shortcut.</summary>
+        [Fact]
+        public async Task Message_Get_ReplacedRawPayloadIsAuthoritative()
+        {
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                "{\"result\":\"success\",\"messages\":[{\"id\":1}]}")!;
+            response.RawPayload = JsonSerializer.SerializeToElement(new { result = "success", messages = new[] { new { id = 2 } } });
+            Messages resource = new Messages((method, url, data) => Task.FromResult(response));
+            Assert.Equal((ulong)2, Assert.Single(await resource.Get(Messages.GetAnchorMode.Newest)).Id);
+        }
+
+        /// <summary>Custom envelope options do not change the existing default-options resource contract.</summary>
+        [Fact]
+        public async Task Message_Get_CustomOptionsRetainRawDeserializationSemantics()
+        {
+            JsonSerializerOptions options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                "{\"result\":\"success\",\"messages\":[{\"id\":1,\"CONTENT\":\"custom\"}]}", options)!;
+            Messages resource = new Messages((method, url, data) => Task.FromResult(response));
+            MessageObject result = Assert.Single(await resource.Get(Messages.GetAnchorMode.Newest));
+            Assert.Null(result.Content);
+            Assert.Equal("custom", result.AdditionalProperties["CONTENT"].GetString());
+            Assert.Equal("custom", Assert.Single(response.Messages!).Content);
+        }
+
         [Fact]
         public async Task Message_SendPrivate_EmailSingle()
         {

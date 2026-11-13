@@ -51,6 +51,10 @@ namespace zulip_cs_lib
                 {
                     object? value = field.Value.Deserialize(property.PropertyType, options);
                     property.SetValue(response, value);
+                    if (field.Name == "messages")
+                    {
+                        response.RetainUnobservedMessages(options);
+                    }
                 }
                 catch (JsonException exception)
                 {
