@@ -185,5 +185,44 @@ namespace zulip_set_lib.tests
             Assert.False(actual.success, $"TrySendPrivate succeeded on invalid email!");
             Assert.False(string.IsNullOrEmpty(actual.details), $"TrySendPrivate must contain details on errors!");
         }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Message_SendPrivate_EmailFormsRemainCommaSeparated(bool separateArguments)
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests, "{\"result\":\"success\",\"id\":31}");
+            string[] recipients = separateArguments
+                ? ["user1@example.org", "user2@example.org"]
+                : ["user1@example.org, user2@example.org"];
+            (bool success, string? details, ulong messageId) actual =
+                await client.Messages.TrySendPrivate("hello", recipients);
+            Assert.True(actual.success, actual.details);
+            Assert.Equal(31UL, actual.messageId);
+            HttpRequestMessage request = Assert.Single(requests);
+            Dictionary<string, string> fields = await Utils.ReadForm(request);
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.EndsWith("/api/v1/messages", request.RequestUri!.AbsoluteUri);
+            Assert.Equal("direct", fields["type"]);
+            Assert.Equal("user1@example.org, user2@example.org", fields["to"]);
+            Assert.Equal("hello", fields["content"]);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Message_SendPrivate_RequiresReturnedMessageId(bool useIds)
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests, "{\"result\":\"success\"}");
+            (bool success, string? details, ulong messageId) actual = useIds
+                ? await client.Messages.TrySendPrivate("hello", 10)
+                : await client.Messages.TrySendPrivate("hello", "user@example.org");
+            Assert.False(actual.success);
+            Assert.Contains("'id'", actual.details);
+            Assert.Equal(0UL, actual.messageId);
+            Assert.Single(requests);
+        }
     }
 }

@@ -25,7 +25,7 @@ namespace zulip_cs_lib.Resources
             /// <summary>Search a specific channel.</summary>
             Channel,
 
-            /// <summary>Search all public channels.</summary>
+            /// <summary>Search public channels, or archived channels on feature level 489 and newer.</summary>
             Channels,
 
             /// <summary>Search within a specific topic.</summary>
@@ -171,7 +171,10 @@ namespace zulip_cs_lib.Resources
                 case NarrowOperator.IsUnread: return "unread";
                 case NarrowOperator.IsFollowed: return "followed";
                 case NarrowOperator.IsMuted: return "muted";
-                case NarrowOperator.Channels: return "public";
+                case NarrowOperator.Channels:
+                    if (_operand == null) return "public";
+                    if (_operand is string channels && channels is "public" or "archived") return channels;
+                    throw new ArgumentException("The channels operand must be 'public' or 'archived'.", "operand");
                 default: return _operand ?? string.Empty;
             }
         }

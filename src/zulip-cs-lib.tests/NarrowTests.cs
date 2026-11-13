@@ -139,6 +139,36 @@ namespace zulip_set_lib.tests
             }
         }
 
+        [Theory]
+        [InlineData("public")]
+        [InlineData("archived")]
+        public void Narrow_Channels_PreservesExplicitOperand(string operand)
+        {
+            string json = Narrow.ToJsonArray(new Narrow(Narrow.NarrowOperator.Channels, operand, negated: true));
+            using JsonDocument document = JsonDocument.Parse(json);
+            Assert.Equal("channels", document.RootElement[0].GetProperty("operator").GetString());
+            Assert.Equal(operand, document.RootElement[0].GetProperty("operand").GetString());
+            Assert.True(document.RootElement[0].GetProperty("negated").GetBoolean());
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("private")]
+        [InlineData("Archived")]
+        public void Narrow_Channels_RejectsUnsupportedStringOperands(string operand)
+        {
+            Narrow narrow = new Narrow(Narrow.NarrowOperator.Channels, operand);
+            ArgumentException exception = Assert.Throws<ArgumentException>(() => narrow.ToJson());
+            Assert.Equal("operand", exception.ParamName);
+        }
+
+        [Fact]
+        public void Narrow_Channels_RejectsNumericAndArrayOperands()
+        {
+            Assert.Throws<ArgumentException>(() => new Narrow(Narrow.NarrowOperator.Channels, 10L).ToJson());
+            Assert.Throws<ArgumentException>(() => new Narrow(Narrow.NarrowOperator.Channels, new long[] { 10 }).ToJson());
+        }
+
         [Fact]
         public void Narrow_ToJsonArray_Single()
         {

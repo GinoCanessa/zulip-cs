@@ -1,7 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
@@ -181,6 +186,202 @@ namespace zulip_set_lib.tests
             Assert.Same(firstResponse, client.LastResponse);
             Assert.Equal(new string[] { "second" }, secondResponse.IgnoredParametersUnsupported);
         }
+
+        [Theory]
+        [InlineData("POST")]
+        [InlineData("PATCH")]
+        [InlineData("DELETE")]
+        [InlineData("GET")]
+        public async Task ZulipClient_ProductionCurlArgumentsMatchDecodedHttpValues(string method)
+        {
+            const string key = "key \"quoted\" + \u00e9";
+            Utils.GetMockHttpClientCapture(HttpStatusCode.OK, Utils.ContentForJsonString("{\"result\":\"success\"}"),
+                out Func<HttpRequestMessage?> capture, out Mock<HttpMessageHandler> handler, out HttpClient httpClient);
+            ZulipClient http = new ZulipClient(_site, _email, key, httpClient);
+            ZulipClient curl = new ZulipClient(_site, _email, key, "curl");
+            Dictionary<string, string> data = TransportValues();
+            HttpMethod httpMethod = new HttpMethod(method);
+            Assert.True((await http.DoZulipRequestHttpClient(httpMethod, "api/v1/messages", data)).Success);
+            HttpRequestMessage request = Assert.IsType<HttpRequestMessage>(capture());
+            ProcessStartInfo start = curl.BuildCurlStartInfo(httpMethod, "api/v1/messages", data);
+            string credential = _email + ":" + key;
+            List<string> expected = ["-sS", "-X", method, request.RequestUri!.AbsoluteUri, "-u", credential];
+            if (method != "GET")
+            {
+                expected.AddRange(["--data-urlencode", "subscriptions=" + data["subscriptions"],
+                    "--data-urlencode", "content=" + data["content"], "--data-urlencode", "to=" + data["to"]]);
+                Assert.Equal(data, await Utils.ReadForm(request));
+            }
+            else
+            {
+                Assert.Null(request.Content);
+                Assert.Equal(data, Utils.DecodeForm(new Uri(start.ArgumentList[3]).Query));
+                Assert.Empty(new Uri(start.ArgumentList[3]).Fragment);
+            }
+            Assert.Equal(expected, start.ArgumentList);
+            Assert.Equal(string.Empty, start.Arguments);
+            Assert.False(start.UseShellExecute);
+            Assert.True(start.RedirectStandardOutput);
+            Assert.True(start.RedirectStandardError);
+            Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(credential)),
+                request.Headers.Authorization!.ToString());
+        }
+
+        [Theory]
+        [InlineData("POST")]
+        [InlineData("GET")]
+        public async Task ZulipClient_RealCurlAndHttpClientPreserveLoopbackWireValues(string method)
+        {
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            List<Task<LoopbackRequest>> captures = [];
+            try
+            {
+                string site = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture);
+                const string key = "key \"with spaces\" + \u00e9";
+                Dictionary<string, string> data = TransportValues();
+                HttpMethod httpMethod = new HttpMethod(method);
+                using HttpClient httpClient = new HttpClient(new HttpClientHandler { UseProxy = false });
+                ZulipClient http = new ZulipClient(site, _email, key, httpClient);
+                Task<LoopbackRequest> httpCapture = ReceiveLoopbackRequest(listener, timeout.Token);
+                captures.Add(httpCapture);
+                ZulipResponse httpResponse = await http.DoZulipRequestHttpClient(httpMethod, "api/v1/messages", data)
+                    .WaitAsync(timeout.Token);
+                Assert.True(httpResponse.Success, httpResponse.CaughtException);
+                LoopbackRequest httpRequest = await httpCapture;
+
+                ZulipClient curl = new ZulipClient(site, _email, key, "curl");
+                ProcessStartInfo start = curl.BuildCurlStartInfo(httpMethod, "api/v1/messages", data);
+                start.ArgumentList.Add("--noproxy");
+                start.ArgumentList.Add("*");
+                start.ArgumentList.Add("--max-time");
+                start.ArgumentList.Add("10");
+                Task<LoopbackRequest> curlCapture = ReceiveLoopbackRequest(listener, timeout.Token);
+                captures.Add(curlCapture);
+                using Process process = Process.Start(start)!;
+                try
+                {
+                    Task<string> stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+                    Task<string> stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+                    await process.WaitForExitAsync(timeout.Token);
+                    string body = await stdout;
+                    string errors = await stderr;
+                    Assert.True(process.ExitCode == 0, errors);
+                    Assert.Equal("{\"result\":\"success\",\"msg\":\"\"}", body);
+                    LoopbackRequest curlRequest = await curlCapture;
+                    Assert.Equal(httpRequest.Method, curlRequest.Method);
+                    Assert.Equal(method, curlRequest.Method);
+                    Assert.Equal(httpRequest.Target, curlRequest.Target);
+                    string credential = _email + ":" + key;
+                    Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(credential)),
+                        curlRequest.Headers["Authorization"]);
+                    Assert.Equal(httpRequest.Headers["Authorization"], curlRequest.Headers["Authorization"]);
+                    Dictionary<string, string> httpValues = method == "GET"
+                        ? Utils.DecodeForm(new Uri(site + httpRequest.Target).Query) : Utils.DecodeForm(httpRequest.Body);
+                    Dictionary<string, string> curlValues = method == "GET"
+                        ? Utils.DecodeForm(new Uri(site + curlRequest.Target).Query) : Utils.DecodeForm(curlRequest.Body);
+                    Assert.Equal(data, httpValues);
+                    Assert.Equal(data, curlValues);
+                }
+                finally
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+                    }
+                }
+            }
+            finally
+            {
+                timeout.Cancel();
+                listener.Stop();
+                foreach (Task<LoopbackRequest> capture in captures)
+                {
+                    try
+                    {
+                        await capture;
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (SocketException) { }
+                    catch (IOException) { }
+                }
+            }
+        }
+
+        [Fact]
+        public async Task ZulipClient_CurlExitFailureRetainsDiagnostics()
+        {
+            ZulipClient curl = new ZulipClient("http://127.0.0.1", _email, _key, "curl");
+            ZulipResponse response = await curl.DoZulipRequestCurl(
+                HttpMethod.Get, "zulip-test-unsupported://127.0.0.1/", null)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(response.Success);
+            Assert.Contains("curl exited with code", response.CaughtException);
+            Assert.Contains("protocol", response.CaughtException!, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(string.Empty, response.HttpResponseBody);
+            Assert.Same(response, curl.LastResponse);
+        }
+
+        /// <summary>Provides structured and Unicode values sensitive to Windows argument quoting.</summary>
+        /// <returns>The logical API form fields.</returns>
+        private static Dictionary<string, string> TransportValues()
+        {
+            return new Dictionary<string, string>
+            {
+                { "subscriptions", "[{\"name\":\"channel \\\"quoted\\\" \u96ea\",\"description\":\"space + % & = # ?\"}]" },
+                { "content", "  a \"quoted\" message \u00e9 \u96ea + % & = # ? \\tail\\\nnext line  " },
+                { "to", "\"123\"" }
+            };
+        }
+
+        /// <summary>Receives one bounded local HTTP request and replies without contacting a Zulip server.</summary>
+        /// <param name="listener">The loopback listener on an ephemeral port.</param>
+        /// <param name="cancellationToken">The deadline for all socket operations.</param>
+        /// <returns>The request line, headers and body seen on the wire.</returns>
+        private static async Task<LoopbackRequest> ReceiveLoopbackRequest(TcpListener listener, CancellationToken cancellationToken)
+        {
+            using TcpClient connection = await listener.AcceptTcpClientAsync(cancellationToken);
+            using NetworkStream stream = connection.GetStream();
+            byte[] header = new byte[16384];
+            int length = 0;
+            while (length < header.Length)
+            {
+                int count = await stream.ReadAsync(header.AsMemory(length, 1), cancellationToken);
+                if (count == 0) throw new IOException("Loopback client closed before sending headers.");
+                length += count;
+                if (length >= 4 && header[length - 4] == '\r' && header[length - 3] == '\n' &&
+                    header[length - 2] == '\r' && header[length - 1] == '\n') break;
+            }
+            if (length == header.Length) throw new IOException("Loopback request headers exceeded the fixture limit.");
+            string[] lines = Encoding.ASCII.GetString(header, 0, length).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            string[] requestLine = lines[0].Split(' ', 3);
+            Dictionary<string, string> headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int index = 1; index < lines.Length; index++)
+            {
+                string[] parts = lines[index].Split(':', 2);
+                headers.Add(parts[0], parts[1].Trim());
+            }
+            int bodyLength = headers.TryGetValue("Content-Length", out string? contentLength)
+                ? int.Parse(contentLength, CultureInfo.InvariantCulture) : 0;
+            if (bodyLength < 0 || bodyLength > 16384) throw new IOException("Loopback request body exceeded the fixture limit.");
+            byte[] body = new byte[bodyLength];
+            await stream.ReadExactlyAsync(body, cancellationToken);
+            const string json = "{\"result\":\"success\",\"msg\":\"\"}";
+            byte[] response = Encoding.UTF8.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                Encoding.UTF8.GetByteCount(json).ToString(CultureInfo.InvariantCulture) + "\r\nConnection: close\r\n\r\n" + json);
+            await stream.WriteAsync(response, cancellationToken);
+            return new LoopbackRequest(requestLine[0], requestLine[1], headers, Encoding.UTF8.GetString(body));
+        }
+
+        /// <summary>The local fixture's captured wire request.</summary>
+        /// <param name="Method">The HTTP method.</param>
+        /// <param name="Target">The path and query from the request line.</param>
+        /// <param name="Headers">The HTTP headers.</param>
+        /// <param name="Body">The UTF-8 request body.</param>
+        private sealed record LoopbackRequest(string Method, string Target, Dictionary<string, string> Headers, string Body);
 
     }
 }

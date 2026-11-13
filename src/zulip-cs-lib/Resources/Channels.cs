@@ -33,12 +33,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _streamsApiEndpoint, null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<StreamObject>>(response, "Channels.GetAll",
+                "streams", JsonValueKind.Array, out List<StreamObject>? streams, out string? details,
+                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
             {
-                return (true, null, response.Streams ?? new List<StreamObject>());
+                return (true, null, streams);
             }
 
-            return (false, "Channels.GetAll failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets all channels (throwing version).</summary>
@@ -57,12 +59,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<StreamObject>(response, "Channels.GetById",
+                "stream", JsonValueKind.Object, out StreamObject? stream, out string? details))
             {
-                return (true, null, response.Stream);
+                return (true, null, stream);
             }
 
-            return (false, "Channels.GetById failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets a channel by stream ID (throwing version).</summary>
@@ -85,12 +88,13 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/get_stream_id", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<int>(response, "Channels.GetIdByName",
+                "stream_id", JsonValueKind.Number, out int streamId, out string? details))
             {
-                return (true, null, response.StreamId);
+                return (true, null, streamId);
             }
 
-            return (false, "Channels.GetIdByName failed: " + response.GetFailureMessage(), 0);
+            return (false, details, 0);
         }
 
         /// <summary>Gets the stream ID by channel name (throwing version).</summary>
@@ -108,12 +112,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/users/me/subscriptions", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<SubscriptionObject>>(response, "Channels.GetSubscriptions",
+                "subscriptions", JsonValueKind.Array, out List<SubscriptionObject>? subscriptions, out string? details,
+                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
             {
-                return (true, null, response.Subscriptions ?? new List<SubscriptionObject>());
+                return (true, null, subscriptions);
             }
 
-            return (false, "Channels.GetSubscriptions failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets the current user's subscriptions (throwing version).</summary>
@@ -188,12 +194,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/me/{streamId}/topics", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<TopicObject>>(response, "Channels.GetTopics",
+                "topics", JsonValueKind.Array, out List<TopicObject>? topics, out string? details,
+                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
             {
-                return (true, null, response.Topics ?? new List<TopicObject>());
+                return (true, null, topics);
             }
 
-            return (false, "Channels.GetTopics failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>The users API endpoint for topic queries.</summary>
@@ -215,12 +223,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}/members", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<int>>(response, "Channels.GetSubscribers",
+                "subscribers", JsonValueKind.Array, out List<int>? subscribers, out string? details))
             {
-                return (true, null, response.Subscribers ?? new List<int>());
+                return (true, null, subscribers);
             }
 
-            return (false, "Channels.GetSubscribers failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets subscribers of a stream (throwing version).</summary>
@@ -304,12 +313,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}/email_address", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<string>(response, "Channels.GetEmailAddress",
+                "email_address", JsonValueKind.String, out string? email, out string? details))
             {
-                return (true, null, response.EmailAddress);
+                return (true, null, email);
             }
 
-            return (false, "Channels.GetEmailAddress failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets email address for a stream (throwing version).</summary>
@@ -327,6 +337,19 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryDeleteTopic(int streamId, string topicName)
         {
+            var result = await TryDeleteTopicBatch(streamId, topicName);
+            return result.success
+                ? result.batch!.ToCompletionResult("Channels.DeleteTopic", nameof(TryDeleteTopicBatch))
+                : (false, result.details);
+        }
+
+        /// <summary>Deletes one topic batch without automatically repeating partial work.</summary>
+        /// <param name="streamId">The channel ID.</param>
+        /// <param name="topicName">The topic name.</param>
+        /// <returns>The Try outcome and explicit completion state.</returns>
+        public async Task<(bool success, string? details, BatchOperationResult? batch)> TryDeleteTopicBatch(
+            int streamId, string topicName)
+        {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "topic_name", topicName }
@@ -334,12 +357,18 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_streamsApiEndpoint}/{streamId}/delete_topic", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
-            {
-                return (true, null);
-            }
+            return BatchOperationResult.Read(response, "Channels.DeleteTopic");
+        }
 
-            return (false, "Channels.DeleteTopic failed: " + response.GetFailureMessage());
+        /// <summary>Deletes one topic batch, throwing on request failure but returning partial completion.</summary>
+        /// <param name="streamId">The channel ID.</param>
+        /// <param name="topicName">The topic name.</param>
+        /// <returns>The batch outcome; callers control continuation.</returns>
+        public async Task<BatchOperationResult> DeleteTopicBatch(int streamId, string topicName)
+        {
+            var result = await TryDeleteTopicBatch(streamId, topicName);
+            if (!result.success) throw new Exception(result.details);
+            return result.batch!;
         }
 
         /// <summary>Deletes a topic (throwing version).</summary>

@@ -384,74 +384,21 @@ namespace zulip_cs_lib
 
             try
             {
-                Uri requestUri = new Uri(_siteUri, relativeUrl);
-
-                string args;
-
-                if (httpMethod == HttpMethod.Get && data != null && data.Count != 0)
-                {
-                    var query = string.Join("&", data.Select(
-                        kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
-                    requestUri = new Uri(requestUri + "?" + query);
-
-                    args =
-                        $"-X {httpMethod.Method.ToUpperInvariant()}" +
-                        $" {requestUri.AbsoluteUri}" +
-                        $" -u {_userEmail}:{_apiKey}";
-                }
-                else
-                {
-                    args =
-                        $"-X {httpMethod.Method.ToUpperInvariant()}" +
-                        $" {requestUri.AbsoluteUri}" +
-                        $" -u {_userEmail}:{_apiKey}";
-
-                    if (data != null)
-                    {
-                        foreach (KeyValuePair<string, string> kvp in data)
-                        {
-                            args += $" --data-urlencode \"{kvp.Key}={kvp.Value}\"";
-                        }
-                    }
-                }
-
-                ProcessStartInfo startInfo = new ProcessStartInfo()
-                {
-                    FileName = _curlCommand,
-                    Arguments = args,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                };
-
-                Process proc = Process.Start(startInfo)!;
-                string body = await proc.StandardOutput.ReadToEndAsync();
-                string errors = await proc.StandardError.ReadToEndAsync();
+                ProcessStartInfo startInfo = BuildCurlStartInfo(httpMethod, relativeUrl, data);
+                using Process proc = Process.Start(startInfo)
+                    ?? throw new InvalidOperationException("Unable to start curl.");
+                Task<string> bodyTask = proc.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = proc.StandardError.ReadToEndAsync();
                 await proc.WaitForExitAsync();
+                string body = await bodyTask;
+                string errors = await errorTask;
 
-                if (string.IsNullOrEmpty(body))
+                if (proc.ExitCode != 0 || string.IsNullOrEmpty(body))
                 {
                     zulipResponse = new ZulipResponse();
-
-                    if (!string.IsNullOrEmpty(errors))
-                    {
-                        zulipResponse.CaughtException = errors;
-                    }
-                    else
-                    {
-                        zulipResponse.CaughtException = "curl returned no data!";
-                    }
-
-                    zulipResponse.Success = false;
-                    LastResponse = zulipResponse;
-                    return zulipResponse;
-                }
-
-                if (body[0] != '{')
-                {
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = "curl returned non-JSON data!";
+                    zulipResponse.CaughtException = proc.ExitCode != 0
+                        ? $"curl exited with code {proc.ExitCode}: {errors}"
+                        : string.IsNullOrEmpty(errors) ? "curl returned no data!" : errors;
                     zulipResponse.HttpResponseBody = body;
                     zulipResponse.Success = false;
                     LastResponse = zulipResponse;
@@ -464,9 +411,8 @@ namespace zulip_cs_lib
                     zulipResponse.Success = zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
                         string.IsNullOrEmpty(zulipResponse.CaughtException);
                 }
-                catch (Exception parseEx)
+                catch (JsonException parseEx)
                 {
-                    // ignore parse exceptions for now
                     zulipResponse = new ZulipResponse();
                     zulipResponse.CaughtException = parseEx.Message;
                     zulipResponse.Success = false;
@@ -474,6 +420,14 @@ namespace zulip_cs_lib
 
                 zulipResponse.HttpResponseCode = 0;
                 zulipResponse.HttpResponseBody = body;
+            }
+            catch (System.ComponentModel.Win32Exception processEx)
+            {
+                zulipResponse = new ZulipResponse
+                {
+                    CaughtException = "Unable to start curl: " + processEx.Message,
+                    Success = false,
+                };
             }
             catch (HttpRequestException httpEx)
             {
@@ -486,6 +440,48 @@ namespace zulip_cs_lib
 
             LastResponse = zulipResponse;
             return zulipResponse;
+        }
+
+        /// <summary>Builds the production curl invocation with unambiguous argument boundaries.</summary>
+        /// <param name="httpMethod">The HTTP method.</param>
+        /// <param name="relativeUrl">The API-relative URL.</param>
+        /// <param name="data">Form or query parameters.</param>
+        /// <returns>The process start information.</returns>
+        internal ProcessStartInfo BuildCurlStartInfo(
+            HttpMethod httpMethod, string relativeUrl, Dictionary<string, string>? data)
+        {
+            Uri requestUri = new Uri(_siteUri, relativeUrl);
+            if (httpMethod == HttpMethod.Get && data != null && data.Count != 0)
+            {
+                string query = string.Join("&", data.Select(
+                    kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+                requestUri = new Uri(requestUri, "?" + query);
+            }
+
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = _curlCommand!,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-sS");
+            startInfo.ArgumentList.Add("-X");
+            startInfo.ArgumentList.Add(httpMethod.Method);
+            startInfo.ArgumentList.Add(requestUri.AbsoluteUri);
+            startInfo.ArgumentList.Add("-u");
+            startInfo.ArgumentList.Add(_userEmail + ":" + _apiKey);
+            if (httpMethod != HttpMethod.Get && data != null)
+            {
+                foreach (KeyValuePair<string, string> pair in data)
+                {
+                    startInfo.ArgumentList.Add("--data-urlencode");
+                    startInfo.ArgumentList.Add(pair.Key + "=" + pair.Value);
+                }
+            }
+
+            return startInfo;
         }
 
         /// <summary>Post this message.</summary>
@@ -537,9 +533,8 @@ namespace zulip_cs_lib
                         zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
                         string.IsNullOrEmpty(zulipResponse.CaughtException);
                 }
-                catch (Exception parseEx)
+                catch (JsonException parseEx)
                 {
-                    // ignore parse exceptions for now
                     zulipResponse = new ZulipResponse();
                     zulipResponse.CaughtException = parseEx.Message;
                     zulipResponse.Success = false;
