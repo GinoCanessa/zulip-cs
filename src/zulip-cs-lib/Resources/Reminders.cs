@@ -34,7 +34,8 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<ReminderObject>>(response, "Reminders.GetAll",
                 "reminders", JsonValueKind.Array, out List<ReminderObject>? reminders, out string? details,
-                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
+                array => ResponsePayload.ValidateObjectIds(array, "reminder_id") ??
+                    ResponsePayload.ValidateObjectIds(array, "reminder_target_message_id")))
             {
                 return (true, null, reminders);
             }

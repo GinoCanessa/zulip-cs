@@ -126,8 +126,8 @@ public static class Program
     {
         Option<string> messageOpt = new("--message") { Description = "Message content.", Required = true };
         Option<string> topicOpt = new("--topic") { Description = "Stream topic.", Required = true };
-        Option<string> streamsOpt = new("--streams") { Description = "Comma-separated stream names." };
-        Option<string> streamIdsOpt = new("--stream-ids") { Description = "Comma-separated stream IDs." };
+        Option<string> streamsOpt = new("--streams") { Description = "One literal stream name (including any commas)." };
+        Option<string> streamIdsOpt = new("--stream-ids") { Description = "One stream ID." };
 
         Command cmd = new("send-stream", "Send a message to a stream/channel.");
         cmd.Options.Add(messageOpt);
@@ -149,8 +149,7 @@ public static class Program
 
             if (!string.IsNullOrEmpty(streams))
             {
-                string[] streamArr = streams.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                result = await client.Messages.TrySendStream(message!, topic!, streamArr);
+                result = await client.Messages.TrySendStream(message!, topic!, streams);
             }
             else if (!string.IsNullOrEmpty(streamIds))
             {

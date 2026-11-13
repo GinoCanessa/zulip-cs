@@ -17,6 +17,16 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Users resource.</summary>
     public class UserTests
     {
+        /// <summary>Missing group identity does not become a successful zero.</summary>
+        [Fact]
+        public async Task Users_GetGroups_RequiresNestedIdentity()
+        {
+            const string json = "{\"result\":\"success\",\"user_groups\":[{}]}";
+            ZulipClient client = Utils.CreateCapturingClient([], json, json);
+            Assert.False((await client.Users.TryGetGroups()).success);
+            await Assert.ThrowsAsync<System.Exception>(() => client.Users.GetGroups());
+        }
+
         [Fact]
         public async Task Users_GetOwnUser_Success()
         {

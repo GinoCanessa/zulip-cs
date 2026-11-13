@@ -55,6 +55,8 @@ flowchart TD
 
 Recommended practice: always call `DeleteQueue` on shutdown to clean up server-side queue resources.
 
+Use `Events.Register(RegistrationOptions?)` when initial state, capabilities, timeout metadata or request-local diagnostics are needed; `RegisterQueue` remains the queue/cursor projection. Apply the fetched initial state, process events, and only then advance the acknowledged cursor. Common event fields are typed by event kind, while unknown payload fields remain owned JSON. The library does not maintain state or automate retries/continuation.
+
 ## 5. Configuration Discovery Flow (`FindZulipRC`)
 
 1. Start at executable base directory.

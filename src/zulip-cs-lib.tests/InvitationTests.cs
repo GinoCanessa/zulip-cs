@@ -119,6 +119,7 @@ namespace zulip_set_lib.tests
         [InlineData(",\"invites\":null")]
         [InlineData(",\"invites\":{}")]
         [InlineData(",\"invites\":[null]")]
+        [InlineData(",\"invites\":[{}]")]
         public async Task Invitations_MissingOrInvalidListFails(string payload)
         {
             Invitations invitations = new Invitations((method, url, data) => Task.FromResult(

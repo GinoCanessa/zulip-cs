@@ -10,9 +10,11 @@ Primary functional areas:
 - Channel operations (list/manage/archive/subscriptions/topics/default channels/topic muting).
 - User operations (lookup/admin lifecycle/status/presence/typing/muting/alert words/groups).
 - Server introspection (Zulip version + feature level).
-- Event queue management (register, poll, delete).
+- Event queue management (detailed initial state/capability registration, typed common/owned unknown events, poll, delete).
 - Scheduled messages, drafts, invitations, reminders, saved snippets, navigation views.
 - Organization-level metadata (linkifiers, custom emoji, profile fields).
+- Modern presence timestamps/server clock, fragment-based navigation/pin state, reminder identity/note/content/failure and current message/channel/group/user/invitation metadata.
+- Explicit caller-controlled partial batch outcomes and compatibility diagnostics; required result fields/essential identities are validated without replacing missing data with successful defaults.
 
 ## CLI (`zulip-cs-cli`)
 
@@ -29,13 +31,25 @@ Current CLI command focus is message-centric workflows:
 
 - Unit tests cover client transport behavior, resources, response parsing, and INI parsing.
 - `Try*` and throwing method patterns are exercised by tests to preserve error-handling contracts.
+- Curl argument/form parity is checked through the production argument builder and bounded loopback child-process fixtures. Real-process tests require curl on PATH (and are explicitly skipped when unavailable); missing-executable failure is independently covered.
+
+From `src`, with the SDK selected by `global.json` and dependencies already restored:
+
+```powershell
+dotnet build ..\zulip-cs.sln --no-restore
+dotnet test ..\zulip-cs.sln --no-restore
+```
 
 ## Functional Boundaries
 
 - The library is a wrapper around Zulip REST API endpoints and does not implement an offline store.
 - CLI output is terminal-oriented text/JSON and is not a full interactive TUI.
 - Authentication in normal flows is API key based (Basic auth header).
+- Batch continuation, event state management and HTTP timeout/retry policy remain caller-owned. Unknown legacy completion is not proof of completion.
+- Navigation numeric/name-only signatures are obsolete no-request failures. Channel sending has one destination; CLI `--streams` is a literal name rather than CSV.
+- Optional metadata/options must be gated by actual server capabilities. No development-clone feature level is asserted as deployed, and no new minimum-server policy is imposed.
 
 ---
-Generated on: 2026-04-07  
+Updated on: 2026-11-13
+
 Published version: 0.0.1-beta.4

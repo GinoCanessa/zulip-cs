@@ -521,7 +521,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<UserGroupObject>>(response, "Users.GetGroups", "user_groups", JsonValueKind.Array,
                 out List<UserGroupObject>? groups, out string? details,
-                groups => ResponsePayload.ValidateElements(groups, JsonValueKind.Object)))
+                groups => ResponsePayload.ValidateObjectIds(groups, "id")))
             {
                 return (true, null, groups);
             }

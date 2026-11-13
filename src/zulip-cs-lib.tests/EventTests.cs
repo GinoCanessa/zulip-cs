@@ -17,6 +17,58 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Events resource.</summary>
     public class EventTests
     {
+        /// <summary>A known message event must include its usable message payload.</summary>
+        [Fact]
+        public async Task Events_MessageEventRequiresPayload()
+        {
+            Events resource = CreateEvents("{\"result\":\"success\",\"events\":[{\"id\":1,\"type\":\"message\"}]}");
+            (bool success, string? details, List<EventObject>? events) actual = await resource.TryGetEvents("queue", -1);
+            Assert.False(actual.success);
+            Assert.Null(actual.events);
+            Assert.Contains("'message' object", actual.details);
+            await Assert.ThrowsAsync<Exception>(() => resource.GetEvents("queue", -1));
+        }
+
+        /// <summary>Unknown kinds can reuse known field names without inheriting unrelated schemas.</summary>
+        [Fact]
+        public async Task Events_UnknownKindOwnsCollidingPayloadFields()
+        {
+            Events resource = CreateEvents("""
+                {"result":"success","events":[{"id":4,"type":"future_kind",
+                  "messages":{"items":[]},"flags":{"future":true},"op":{"kind":"future"},
+                  "message":[null,1],"message_id":"future"}]}
+                """);
+            EventObject item = Assert.Single(await resource.GetEvents("queue", -1));
+            Assert.Null(item.Messages);
+            Assert.Null(item.Flags);
+            Assert.Null(item.Message);
+            Assert.Null(item.MessageId);
+            Assert.Empty(item.ExtensionData!["messages"].GetProperty("items").EnumerateArray());
+            Assert.True(item.ExtensionData["flags"].GetProperty("future").GetBoolean());
+            Assert.Equal("future", item.ExtensionData["op"].GetProperty("kind").GetString());
+            Assert.Equal(1, item.ExtensionData["message"][1].GetInt32());
+            JsonElement roundTrip = JsonSerializer.SerializeToElement(item);
+            Assert.Equal("future", roundTrip.GetProperty("message_id").GetString());
+            Assert.True(roundTrip.GetProperty("flags").GetProperty("future").GetBoolean());
+            Assert.Equal("future_kind", roundTrip.GetProperty("type").GetString());
+        }
+
+        /// <summary>Even supported kinds preserve fields outside their own typed contract.</summary>
+        [Fact]
+        public async Task Events_KnownKindRetainsUnrelatedFieldCollision()
+        {
+            Events resource = CreateEvents("""
+                {"result":"success","events":[{"id":4,"type":"reaction","op":"add",
+                  "message_id":31,"user_id":10,"messages":{"future":true}}]}
+                """);
+            EventObject item = Assert.Single(await resource.GetEvents("queue", -1));
+            Assert.Equal(31, item.MessageId);
+            Assert.Equal(10, item.UserId);
+            Assert.Null(item.Messages);
+            Assert.True(item.ExtensionData!["messages"].GetProperty("future").GetBoolean());
+            Assert.True(JsonSerializer.SerializeToElement(item).GetProperty("messages").GetProperty("future").GetBoolean());
+        }
+
         [Fact]
         public async Task Events_RegisterQueue_Success()
         {
@@ -56,7 +108,7 @@ namespace zulip_set_lib.tests
         public async Task Events_GetEvents_Success()
         {
             HttpContent content = Utils.ContentForJsonString(
-                "{\"result\":\"success\",\"msg\":\"\",\"events\":[{\"id\":0,\"type\":\"heartbeat\"},{\"id\":1,\"type\":\"message\"}]}");
+                "{\"result\":\"success\",\"msg\":\"\",\"events\":[{\"id\":0,\"type\":\"heartbeat\"},{\"id\":1,\"type\":\"message\",\"message\":{\"id\":31}}]}");
 
             bool success = Utils.TryGetMockedClient(
                 HttpStatusCode.OK, content,
@@ -143,7 +195,7 @@ namespace zulip_set_lib.tests
                     {"id":7,"type":"subscription","op":"peer_add","stream_ids":[1,2],"user_ids":[10,11]},
                     {"id":8,"type":"future_523_plus","user":{"variant":"object"},"value":[false,{"payload":42}],
                      "future_field":{"nested":[null,"future"]}},
-                    {"id":9,"type":"reaction","op":"add","user":10,"message_id":31}
+                    {"id":9,"type":"reaction","op":"add","user_id":10,"message_id":31}
                   ]
                 }
                 """;
@@ -198,7 +250,7 @@ namespace zulip_set_lib.tests
             Assert.Equal(new int[] { 10, 11 }, events[5].UserIds);
             Assert.Equal("object", events[6].ExtensionData!["user"].GetProperty("variant").GetString());
             Assert.Equal(42, events[6].ExtensionData!["value"][1].GetProperty("payload").GetInt32());
-            Assert.Equal(10, events[7].ExtensionData!["user"].GetInt32());
+            Assert.Equal(10, events[7].UserId);
 
             JsonElement roundTrip = JsonSerializer.SerializeToElement(events);
             Assert.Equal("future", roundTrip[6].GetProperty("future_field").GetProperty("nested")[1].GetString());

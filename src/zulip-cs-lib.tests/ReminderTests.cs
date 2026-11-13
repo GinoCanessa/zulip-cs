@@ -13,6 +13,23 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Reminders resource.</summary>
     public class ReminderTests
     {
+        /// <summary>Requires both reminder identity and target instead of returning default zero.</summary>
+        /// <param name="fields">The incomplete reminder fields.</param>
+        [Theory]
+        [InlineData("")]
+        [InlineData("\"reminder_id\":7")]
+        [InlineData("\"reminder_target_message_id\":100")]
+        public async Task Reminders_GetAll_RequiresNestedIdentityAndTarget(string fields)
+        {
+            string json = $"{{\"result\":\"success\",\"reminders\":[{{{fields}}}]}}";
+            ZulipClient client = Utils.CreateCapturingClient([], json, json);
+            (bool success, string? details, List<ReminderObject>? reminders) actual = await client.Reminders.TryGetAll();
+            Assert.False(actual.success);
+            Assert.Null(actual.reminders);
+            Assert.Contains("reminder", actual.details);
+            await Assert.ThrowsAsync<Exception>(() => client.Reminders.GetAll());
+        }
+
         [Fact]
         public async Task Reminders_GetAll_Success()
         {

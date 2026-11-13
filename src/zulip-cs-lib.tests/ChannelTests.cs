@@ -15,6 +15,23 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Channels resource.</summary>
     public class ChannelTests
     {
+        /// <summary>Missing channel identities fail on details and collections, including throwing projections.</summary>
+        [Fact]
+        public async Task Channels_ReadsRequireNestedIdentities()
+        {
+            const string json = "{\"result\":\"success\",\"stream\":{},\"streams\":[{}],\"subscriptions\":[{}]}";
+            ZulipClient client = Utils.CreateCapturingClient([], json, json, json, json, json, json);
+            (bool success, string? details, StreamObject? stream) single = await client.Channels.TryGetById(1);
+            Assert.False(single.success);
+            Assert.Null(single.stream);
+            Assert.Contains("stream_id", single.details);
+            Assert.False((await client.Channels.TryGetAll()).success);
+            Assert.False((await client.Channels.TryGetSubscriptions()).success);
+            await Assert.ThrowsAsync<Exception>(() => client.Channels.GetById(1));
+            await Assert.ThrowsAsync<Exception>(() => client.Channels.GetAll());
+            await Assert.ThrowsAsync<Exception>(() => client.Channels.GetSubscriptions());
+        }
+
         [Fact]
         public async Task Channels_GetAll_Success()
         {

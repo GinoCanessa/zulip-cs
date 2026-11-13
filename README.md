@@ -29,6 +29,8 @@ Create a `ZulipClient` by providing your Zulip site URL, email, and API key:
 
 ```csharp
 using zulip_cs_lib;
+using zulip_cs_lib.Models;
+using zulip_cs_lib.Resources;
 
 // Provide credentials directly
 var client = new ZulipClient("https://zulip.example.com", "user@example.com", "your_api_key");
@@ -44,11 +46,11 @@ You can also supply your own `HttpClient` or use a `curl` subprocess as the HTTP
 var client = new ZulipClient("https://zulip.example.com", "user@example.com", "your_api_key", httpClient);
 
 // curl backend
-var client = new ZulipClient("https://zulip.example.com", "user@example.com", "your_api_key", "/usr/bin/curl");
+var client = new ZulipClient("https://zulip.example.com", "user@example.com", "your_api_key", "curl");
 
 // zuliprc + custom HttpClient or curl
 var client = new ZulipClient("path/to/zuliprc", httpClient);
-var client = new ZulipClient("path/to/zuliprc", "/usr/bin/curl");
+var client = new ZulipClient("path/to/zuliprc", "curl");
 ```
 
 ## API Overview
@@ -61,14 +63,14 @@ All Zulip API operations are accessed through resource properties on `ZulipClien
 | `Channels` | List, create, update, archive channels; manage subscriptions and topics. |
 | `Users` | Get, create, update, deactivate users; presence; status; alert words; user groups. |
 | `Server` | Get server settings (version, feature level). |
-| `Events` | Register event queues, poll for events, delete queues. |
+| `Events` | Register queues with initial state/capabilities, poll payload-bearing events, delete queues. |
 | `ScheduledMessages` | Create, edit, delete, and list scheduled messages. |
 | `Drafts` | Create, edit, delete, and list drafts. |
 | `Invitations` | Send invitations, create invitation links, resend, revoke. |
 | `Organization` | Linkifiers, custom emoji, custom profile fields. |
 | `SavedSnippets` | Create, edit, delete, and list saved snippets. |
-| `Reminders` | Create, delete, and list reminders. |
-| `NavigationViews` | Create, update, delete, and list navigation views. |
+| `Reminders` | Create with identity/optional note, delete, and list reminder targets/content/failure state. |
+| `NavigationViews` | Create, update, delete, and list fragment-identified views and pin state. |
 
 ### Throwing vs Try Pattern
 
@@ -82,12 +84,16 @@ Every public method is available in two styles:
 ulong id = await client.Messages.SendStream("Hello!", "greetings", "general");
 
 // Try — caller decides how to handle failure
-(bool success, string details, ulong id) = await client.Messages.TrySendStream("Hello!", "greetings", "general");
+(bool success, string? details, ulong id) = await client.Messages.TrySendStream("Hello!", "greetings", "general");
 if (!success)
 {
     Console.WriteLine($"Failed: {details}");
 }
 ```
+
+Required response fields and essential identities are validated: missing/null/malformed data fails explicitly, while actual empty collections remain valid. Successful responses can still carry nonfatal `ignored_parameters_unsupported` warnings. Inspect `client.LastResponse?.IgnoredParametersUnsupported`, `RawPayload`, and `ExtensionData` for diagnostics and unmodeled data.
+
+`LastResponse` is the **most recently completed** request, not a per-call association under concurrency. `PresenceResult`, `RegistrationResult`, and `BatchOperationResult` carry their own `Response`; prefer these for request-local diagnostics. Do not retry an applied mutation just because a compatibility warning was returned.
 
 ### Examples
 
@@ -109,10 +115,10 @@ var narrows = new[]
 };
 
 List<MessageObject> messages = await client.Messages.Get(
-    GetAnchorMode.Newest,
+    Messages.GetAnchorMode.Newest,
     numBefore: 20,
     numAfter: 0,
-    narrows: narrows);
+    narrow: narrows);
 ```
 
 **Manage channels:**
@@ -128,24 +134,65 @@ List<SubscriptionObject> subs = await client.Channels.GetSubscriptions();
 List<TopicObject> topics = await client.Channels.GetTopics(streamId: 42);
 ```
 
-**Register an event queue:**
+**Register an event queue with initial state:**
 
 ```csharp
-(string queueId, int lastEventId) = await client.Events.RegisterQueue();
-
-// Poll for events
-List<EventObject> events = await client.Events.GetEvents(queueId, lastEventId);
-
-// Clean up
-await client.Events.DeleteQueue(queueId);
+RegistrationResult registration = await client.Events.Register(new RegistrationOptions
+{
+    EventTypes = ["message", "update_message", "delete_message"],
+    FetchEventTypes = ["realm", "realm_user", "subscription", "stream", "presence"],
+    SlimPresence = true,
+    ClientCapabilities = new Dictionary<string, bool> { ["bulk_message_deletion"] = true }
+});
+try
+{
+    List<EventObject> events = await client.Events.GetEvents(registration.QueueId, registration.LastEventId);
+    // Apply initial state/events before advancing the polling cursor.
+}
+finally
+{
+    await client.Events.DeleteQueue(registration.QueueId);
+}
 ```
+
+`RawInitialState` owns the complete registration response. Typed initial fields depend on fetch filters; registration does not fetch message bodies. Timeout/capability metadata is retained, but the library does not configure HTTP timeouts, maintain a state store or retry polling automatically. Common message/update/delete/flag events expose typed fields; unmodeled fields and unknown event kinds are retained in `EventObject.ExtensionData`, even when they reuse a typed field name. `RegisterQueue` remains a queue/cursor-only projection.
 
 **User management:**
 
 ```csharp
 UserObject me = await client.Users.GetOwnUser();
 List<UserObject> allUsers = await client.Users.GetAll();
+PresenceResult presence = await client.Users.GetPresenceDetails("user@example.com");
+long? lastActive = presence.Presence.ActiveTimestamp;
+double? serverClock = presence.ServerTimestamp;
 ```
+
+`GetPresence` remains a legacy dictionary adapter using actual server-provided client entries. On modern-only payloads it fails with guidance to use `GetPresenceDetails`; no status is synthesized from local wall-clock time. `GetGroupMembers(groupId, directMemberOnly: true)` exposes direct-only filtering without changing the original overload.
+
+**Manage fragment-based navigation views and reminders:**
+
+```csharp
+await client.NavigationViews.Create("narrow/is/starred", isPinned: true, name: "Important");
+await client.NavigationViews.Update("narrow/is/starred", isPinned: false);
+await client.NavigationViews.Delete("narrow/is/starred");
+int reminderId = await client.Reminders.CreateWithId(
+    messageId: 100,
+    scheduledDeliveryTimestamp: DateTimeOffset.UtcNow.AddMinutes(30).ToUnixTimeSeconds(),
+    note: "Follow up");
+```
+
+Navigation identity is `Fragment`, not a numeric ID. Name-only creation and numeric update/delete signatures are obsolete and fail explicitly **without a request**; migrate to fragment overloads. Fragments preserve slash-separated segments and encode reserved characters; empty/dot traversal segments are rejected. Reminder reads retain `reminder_target_message_id`, content/rendered content, recipients and failure state.
+
+**Inspect one batch rather than assuming completion:**
+
+```csharp
+BatchOperationResult batch = await client.Channels.DeleteTopicBatch(42, "old topic");
+// Complete == false: work was applied but remains; the caller may request another batch.
+// Complete == null: a legacy response did not specify completion.
+// Complete == true: this operation is complete.
+```
+
+`Messages.MarkAllAsReadBatch` has the same one-shot contract. No internal continuation loop is run. Existing `DeleteTopic`/`MarkAllAsRead` convenience methods fail/throw for **known partial** work; missing legacy completion retains success with explicit Try details and unknown state on batch results. A failure reporting partial work is not a rollback.
 
 **Fetch an API key from username/password:**
 
@@ -162,6 +209,9 @@ The `Narrow` class helps build Zulip message query filters:
 // Single narrow
 var narrow = new Narrow(NarrowOperator.Channel, "general");
 
+// Archived channels (Channels without an operand defaults to public)
+var archived = new Narrow(NarrowOperator.Channels, "archived");
+
 // Negated narrow
 var narrow = new Narrow(NarrowOperator.IsStarred, negated: true);
 
@@ -172,6 +222,12 @@ string json = Narrow.ToJsonArray(
 ```
 
 Available operators: `Channel`, `Channels`, `Topic`, `Dm`, `DmIncluding`, `Sender`, `Search`, `Near`, `Id`, `HasAttachment`, `HasLink`, `HasImage`, `HasReaction`, `IsAlerted`, `IsMentioned`, `IsDm`, `IsStarred`, `IsUnread`, `IsFollowed`, `IsMuted`, `With`, `Mentions`.
+
+### Current Model Metadata
+
+Message/history models retain reactions and edit/move metadata. Channel/subscription models retain archive/folder/topic/default-push settings and permission groups; user/group/invitation models retain import/deletion, governance and lifecycle metadata. `GroupSettingValue` represents either a named integer `GroupId` or anonymous `DirectMembers`/`DirectSubgroups`, preserving unmodeled object fields.
+
+`StreamPostPolicy` is deprecated and an **inexact superset**, not authorization. Use authoritative channel group settings such as `CanSendMessageGroup`, together with realm permissions and channel access; do not infer posting rights from the coarse policy alone. Optional metadata varies by server feature level; read `Server.GetSettings` and compatibility warnings before relying on newer features.
 
 ## Architecture
 
@@ -222,11 +278,11 @@ zulip-cs-cli send-pm --message "Hello!" --emails "user1@example.com,user2@exampl
 zulip-cs-cli send-pm --message "Hello!" --user-ids "123,456"
 ```
 
-**`send-stream`** — Send a message to one or more streams by name or ID.
+**`send-stream`** — Send a message to exactly one stream by literal name or ID. Numeric/JSON-looking names remain names; commas in `--streams` are part of the name, not a destination list.
 
 ```
 zulip-cs-cli send-stream --message "Hello!" --topic "greetings" --streams "general"
-zulip-cs-cli send-stream --message "Hello!" --topic "greetings" --stream-ids "1,2"
+zulip-cs-cli send-stream --message "Hello!" --topic "greetings" --stream-ids "42"
 ```
 
 #### Managing Messages

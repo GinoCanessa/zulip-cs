@@ -199,15 +199,20 @@ namespace zulip_cs_lib.Resources
                     return "each event must have an integer 'id' and nonempty String 'type'.";
                 }
 
-                if (type.GetString() == "message" && item.TryGetProperty("message", out JsonElement message))
+                if (type.GetString() == "message")
                 {
-                    if (message.ValueKind != JsonValueKind.Object ||
-                        !message.TryGetProperty("id", out JsonElement messageId) ||
-                        messageId.ValueKind != JsonValueKind.Number || !messageId.TryGetInt32(out _))
+                    if (!item.TryGetProperty("message", out JsonElement message) ||
+                        message.ValueKind != JsonValueKind.Object)
                     {
-                        return "event message must have an integer 'id'.";
+                        return "message events require a 'message' object.";
                     }
 
+                    string? error = ResponsePayload.ValidateObjectId(message, "id");
+                    if (error != null) return "event message: " + error;
+                    if (!message.GetProperty("id").TryGetInt32(out _))
+                    {
+                        return "event message 'id' must fit the supported integer message-ID representation.";
+                    }
                     message.Deserialize<MessageObject>();
                 }
             }

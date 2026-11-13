@@ -35,7 +35,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<StreamObject>>(response, "Channels.GetAll",
                 "streams", JsonValueKind.Array, out List<StreamObject>? streams, out string? details,
-                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
+                array => ResponsePayload.ValidateObjectIds(array, "stream_id")))
             {
                 return (true, null, streams);
             }
@@ -60,7 +60,8 @@ namespace zulip_cs_lib.Resources
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}", null);
 
             if (ResponsePayload.TryRead<StreamObject>(response, "Channels.GetById",
-                "stream", JsonValueKind.Object, out StreamObject? stream, out string? details))
+                "stream", JsonValueKind.Object, out StreamObject? stream, out string? details,
+                value => ResponsePayload.ValidateObjectId(value, "stream_id")))
             {
                 return (true, null, stream);
             }
@@ -114,7 +115,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<SubscriptionObject>>(response, "Channels.GetSubscriptions",
                 "subscriptions", JsonValueKind.Array, out List<SubscriptionObject>? subscriptions, out string? details,
-                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
+                array => ResponsePayload.ValidateObjectIds(array, "stream_id")))
             {
                 return (true, null, subscriptions);
             }

@@ -582,7 +582,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<MessageObject>>(response, "Messages.Get",
                 "messages", JsonValueKind.Array, out List<MessageObject>? messages, out string? details,
-                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
+                array => ResponsePayload.ValidateObjectIds(array, "id")))
             {
                 return (true, null, messages, response.FoundNewest, response.FoundOldest);
             }
@@ -639,7 +639,8 @@ namespace zulip_cs_lib.Resources
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_messageApiEndpoint}/{messageId}", data);
 
             if (ResponsePayload.TryRead<MessageObject>(response, "Messages.GetSingle",
-                "message", JsonValueKind.Object, out MessageObject? message, out string? details))
+                "message", JsonValueKind.Object, out MessageObject? message, out string? details,
+                value => ResponsePayload.ValidateObjectId(value, "id")))
             {
                 return (true, null, message, response.RawContent);
             }

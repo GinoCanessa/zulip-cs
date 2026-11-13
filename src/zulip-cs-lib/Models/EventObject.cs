@@ -6,6 +6,7 @@ namespace zulip_cs_lib.Models
 {
     /// <summary>Represents a Zulip event.</summary>
     /// <remarks>Common message fields are typed; other event payloads remain available in extension data.</remarks>
+    [JsonConverter(typeof(EventObjectConverter))]
     public class EventObject
     {
         /// <summary>The complete owned message payload, including unmodeled message fields.</summary>

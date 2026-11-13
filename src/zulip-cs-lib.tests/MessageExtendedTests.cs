@@ -17,6 +17,21 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for new Messages methods added in Phase 1 and Phase 4.</summary>
     public class MessageExtendedTests
     {
+        /// <summary>A returned object cannot invent the message identity absent from the wire.</summary>
+        [Fact]
+        public async Task Messages_ReadsRequireNestedIdentities()
+        {
+            const string json = "{\"result\":\"success\",\"message\":{},\"messages\":[{}]}";
+            ZulipClient client = Utils.CreateCapturingClient([], json, json, json, json);
+            (bool success, string? details, MessageObject? message, string? rawContent) single = await client.Messages.TryGetSingle(1);
+            Assert.False(single.success);
+            Assert.Null(single.message);
+            Assert.Contains("'id'", single.details);
+            Assert.False((await client.Messages.TryGet(Messages.GetAnchorMode.Newest)).success);
+            await Assert.ThrowsAsync<Exception>(() => client.Messages.GetSingle(1));
+            await Assert.ThrowsAsync<Exception>(() => client.Messages.Get(Messages.GetAnchorMode.Newest));
+        }
+
         [Fact]
         public async Task Message_SendStream_ByName_Success()
         {
@@ -336,6 +351,7 @@ namespace zulip_set_lib.tests
 
         [Theory]
         [InlineData("123")]
+        [InlineData("General,Team")]
         [InlineData("[1,2]")]
         [InlineData("{\"id\":42}")]
         [InlineData("null")]

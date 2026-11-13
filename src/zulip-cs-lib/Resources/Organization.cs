@@ -30,7 +30,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<LinkifierObject>>(response, "Organization.GetLinkifiers", "linkifiers", JsonValueKind.Array,
                 out List<LinkifierObject>? linkifiers, out string? details,
-                linkifiers => ResponsePayload.ValidateElements(linkifiers, JsonValueKind.Object)))
+                linkifiers => ResponsePayload.ValidateObjectIds(linkifiers, "id")))
             {
                 return (true, null, linkifiers);
             }
@@ -187,7 +187,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<ProfileFieldObject>>(response, "Organization.GetProfileFields", "custom_fields", JsonValueKind.Array,
                 out List<ProfileFieldObject>? fields, out string? details,
-                fields => ResponsePayload.ValidateElements(fields, JsonValueKind.Object)))
+                fields => ResponsePayload.ValidateObjectIds(fields, "id")))
             {
                 return (true, null, fields);
             }

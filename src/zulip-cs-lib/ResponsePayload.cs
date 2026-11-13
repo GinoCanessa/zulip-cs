@@ -139,15 +139,25 @@ namespace zulip_cs_lib
         {
             foreach (JsonElement item in array.EnumerateArray())
             {
-                if (item.ValueKind != JsonValueKind.Object ||
-                    !item.TryGetProperty(field, out JsonElement id) ||
-                    id.ValueKind != JsonValueKind.Number || !id.TryGetInt64(out _))
-                {
-                    return $"required collection field '{field}' must be an integer.";
-                }
+                string? error = ValidateObjectId(item, field);
+                if (error != null) return error;
             }
 
             return null;
+        }
+
+        /// <summary>Requires an actual integer identity rather than an unassigned CLR default.</summary>
+        /// <param name="item">The returned object.</param>
+        /// <param name="field">Its identity field.</param>
+        /// <returns>A validation error, or null.</returns>
+        internal static string? ValidateObjectId(JsonElement item, string field)
+        {
+            return item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty(field, out JsonElement id) ||
+                id.ValueKind != JsonValueKind.Number ||
+                !(id.TryGetInt64(out _) || id.TryGetUInt64(out _))
+                ? $"required object field '{field}' must be an integer."
+                : null;
         }
 
         /// <summary>Validates dictionary value shapes without rejecting an empty dictionary.</summary>

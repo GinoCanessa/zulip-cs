@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -20,6 +21,32 @@ namespace zulip_set_lib.tests
     /// <summary>Basic Zulip client tests.</summary>
     public class ZulipClientTests
     {
+        /// <summary>Gets whether the external executable required by real-process tests is available.</summary>
+        public static bool CurlAvailable
+        {
+            get
+            {
+                IEnumerable<string> directories = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+                    .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                    .Prepend(Environment.CurrentDirectory);
+                if (OperatingSystem.IsWindows()) directories = directories.Prepend(Environment.SystemDirectory);
+                string name = OperatingSystem.IsWindows() ? "curl.exe" : "curl";
+                return directories.Any(directory => File.Exists(Path.Combine(directory.Trim('"'), name)));
+            }
+        }
+
+        /// <summary>Startup errors remain explicit and available through diagnostics without requiring installed curl.</summary>
+        [Fact]
+        public async Task ZulipClient_MissingCurlRetainsStartupFailure()
+        {
+            string executable = Path.Combine(Path.GetTempPath(), "zulip-missing-curl-" + Guid.NewGuid().ToString("N") + ".exe");
+            ZulipClient client = new ZulipClient(_site, _email, _key, executable);
+            ZulipResponse response = await client.DoZulipRequestCurl(HttpMethod.Get, "api/v1/messages", null);
+            Assert.False(response.Success);
+            Assert.Contains("Unable to start curl:", response.CaughtException);
+            Assert.Same(response, client.LastResponse);
+        }
+
         /// <summary>Non-object responses produce explicit Try failures instead of null dereferences.</summary>
         /// <param name="body">The invalid response root.</param>
         [Theory]
@@ -265,7 +292,7 @@ namespace zulip_set_lib.tests
                 request.Headers.Authorization!.ToString());
         }
 
-        [Theory]
+        [Theory(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
         [InlineData("POST")]
         [InlineData("GET")]
         public async Task ZulipClient_RealCurlAndHttpClientPreserveLoopbackWireValues(string method)
@@ -328,7 +355,8 @@ namespace zulip_set_lib.tests
                     if (!process.HasExited)
                     {
                         process.Kill(entireProcessTree: true);
-                        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+                        using CancellationTokenSource cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        await process.WaitForExitAsync(cleanup.Token);
                     }
                 }
             }
@@ -349,7 +377,7 @@ namespace zulip_set_lib.tests
             }
         }
 
-        [Fact]
+        [Fact(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
         public async Task ZulipClient_CurlExitFailureRetainsDiagnostics()
         {
             ZulipClient curl = new ZulipClient("http://127.0.0.1", _email, _key, "curl");

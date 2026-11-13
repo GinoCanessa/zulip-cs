@@ -33,7 +33,7 @@ namespace zulip_cs_lib.Resources
 
             if (ResponsePayload.TryRead<List<InviteObject>>(response, "Invitations.GetAll", "invites", JsonValueKind.Array,
                 out List<InviteObject>? invites, out string? details,
-                invites => ResponsePayload.ValidateElements(invites, JsonValueKind.Object)))
+                invites => ResponsePayload.ValidateObjectIds(invites, "id")))
             {
                 return (true, null, invites);
             }

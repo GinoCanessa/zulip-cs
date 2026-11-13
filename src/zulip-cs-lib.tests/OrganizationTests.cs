@@ -154,6 +154,7 @@ namespace zulip_set_lib.tests
         [InlineData(",\"linkifiers\":null,\"emoji\":null,\"custom_fields\":null")]
         [InlineData(",\"linkifiers\":{},\"emoji\":[],\"custom_fields\":{}")]
         [InlineData(",\"linkifiers\":[null],\"emoji\":{\"bad\":null},\"custom_fields\":[null]")]
+        [InlineData(",\"linkifiers\":[{}],\"emoji\":{\"bad\":null},\"custom_fields\":[{}]")]
         public async Task Organization_RequiredLists_InvalidSuccessFails(string payload)
         {
             Organization organization = new Organization((method, url, data) => Task.FromResult(
