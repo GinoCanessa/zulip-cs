@@ -89,4 +89,4 @@ Bounded loopback fixtures additionally verify real curl argument serialization. 
 ---
 Updated on: 2026-11-13
 
-Published version: 0.0.1-beta.4
+Documentation version: 1.0.0

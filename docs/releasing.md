@@ -19,8 +19,9 @@ Before the first release with this workflow:
    deployment rules.
 2. Set the environment variable **`NUGET_PUBLISH_ENVIRONMENT_READY=true`**
    after protection is configured.
-3. Add the environment secret **`NUGET_USER`** containing the NuGet profile
-   username, not an email address or API key.
+3. Provide the secret **`NUGET_USER`** containing the NuGet profile username,
+   not an email address or API key. An environment or repository secret works;
+   prefer the environment scope for release-only configuration.
 4. Create a [NuGet trusted-publishing policy](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)
    with repository owner **`GinoCanessa`**, repository **`zulip-cs`**, workflow
    filename **`nuget-library.yaml`** (filename only), and environment
@@ -34,14 +35,23 @@ before pushing. No long-lived NuGet API key is used by the new workflow.
 
 ## Prepare and Publish
 
-1. Merge the intended release source, including these workflows, into `main`.
-2. Choose a new three-component SemVer version, such as `0.0.1-beta.6` or
-   `0.1.0`, and tag that commit as exactly `v<version>`.
-3. Push the tag and optionally run **Publish dotnet library to NuGet.org**
+1. Complete the administrator setup above. The `nuget.org` environment must
+   have deployment protection and allow `v*` tags; setting the readiness
+   variable alone is not sufficient.
+2. Choose a new three-component SemVer version, such as `1.0.0` or
+   `1.0.1-beta.1`. Update `src/common.props`, the
+   [changelog](../CHANGELOG.md), and version references in documentation.
+   Verify a Release build, all target-framework tests, and the NuGet candidate
+   before committing.
+3. Merge the intended release source, including these workflows, into `main`,
+   and tag that merged commit as exactly `v<version>` (`v1.0.0` for this release).
+   Do not tag an unmerged development-branch commit.
+4. Push the tag and optionally run **Publish dotnet library to NuGet.org**
    manually with that existing tag. Manual runs are **validation-only**:
    they test and pack but never authenticate to or publish on NuGet.
-4. Publish the GitHub Release for that same tag, then approve the `nuget.org`
-   deployment when requested.
+5. Publish the GitHub Release for that same tag using its changelog entry as
+   release notes, then approve the `nuget.org` deployment when requested.
+   Mark `v1.0.0` as a stable release, not a prerelease.
 
 Version components must have no leading zeros and fit .NET assembly version
 limits (`0-65534`). Prerelease identifiers must be lowercase; numeric
@@ -49,10 +59,10 @@ identifiers must have no leading zeros. Four-component versions, unprefixed
 tags, and build metadata (`+...`) are rejected to avoid NuGet normalization
 ambiguities.
 
-Local builds continue using `src/common.props`. Release builds override
+Local builds use `src/common.props`. Release builds override
 `Version` and `PackageVersion` from the tag, and set `RepositoryCommit` to
-the exact tagged commit. Updating the local development version is optional;
-the release tag determines the published package version.
+the exact tagged commit. Keep the source version aligned when preparing a
+release; the release tag remains authoritative for the published package version.
 
 The workflow freshly fetches the tag and `origin/main`, requires the tagged
 commit to be contained in `main`, and requires release events to match their
@@ -60,6 +70,8 @@ original event SHA. The reusable Tests workflow checks out that exact commit
 on Linux, Windows, and macOS and tests all existing target frameworks.
 The candidate must contain the expected package ID, version, repository
 commit, and libraries for `net11.0`, `net10.0`, `net9.0`, and `net8.0`.
+It also includes the license, README, and changelog, with a version-specific
+release-notes link in its NuGet metadata.
 Build and publishing jobs use the .NET 11 SDK.
 
 The candidate is retained as a GitHub Actions artifact for 90 days.

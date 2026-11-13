@@ -175,5 +175,6 @@ Fetch read receipt user IDs as JSON.
 - Invalid operation, propagation, and stream-filter arguments fail during parsing, before configuration loading or client creation. Supplied options require their argument; omitted optional filters retain their defaults.
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

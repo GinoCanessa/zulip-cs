@@ -1,7 +1,3 @@
-# Early Development Warning
-
-Note that this package is in the EARLY development stages and should not be used in production.
-
 # Zulip C# Library
 
 [![Tests](https://github.com/GinoCanessa/zulip-cs/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/GinoCanessa/zulip-cs/actions/workflows/build-and-test.yaml)
@@ -17,6 +13,12 @@ Code was developed using several existing projects for guidance and inspiration:
 * [zulip-js](https://github.com/zulip/zulip-js)
 
 ## Releases
+
+**1.0.0** is the first stable release. See the [changelog](CHANGELOG.md)
+for release notes and migration guidance from the prerelease versions.
+API coverage and server feature requirements are described in
+[Compatibility Scope](#compatibility-scope); stable versioning does not imply
+complete Zulip API coverage or authenticated production certification.
 
 Publishing a GitHub Release for a `v<version>` tag triggers NuGet trusted
 publishing after the tagged source passes cross-platform tests. Pushing a tag

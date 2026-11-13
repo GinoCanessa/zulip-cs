@@ -51,7 +51,11 @@ The test project also references the CLI for offline parser and configuration-di
 
 All projects share a single version defined in `src/common.props`:
 
-- Current version: `0.0.1-beta.5`
+- Current version: `1.0.0`
+
+The NuGet package includes `LICENSE`, `README.md`, and `CHANGELOG.md`.
+Release notes and prerelease migration guidance are in the
+[changelog](../CHANGELOG.md).
 
 ## Build and Test Commands
 
@@ -82,5 +86,6 @@ dotnet test zulip-cs.sln --filter "FullyQualifiedName=zulip_set_lib.tests.Messag
 - For `curl` backend usage, ensure the executable path is available and accessible.
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

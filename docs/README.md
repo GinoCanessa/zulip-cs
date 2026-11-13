@@ -12,6 +12,7 @@ This folder contains onboarding and technical reference documentation for contri
 6. [CLI Command Reference](./cli-command-reference.md)
 7. [Dependencies and Build/Test](./dependencies-and-build.md)
 8. [Release Process and Trusted Publishing](./releasing.md)
+9. [Changelog and Migration Notes](../CHANGELOG.md)
 
 ## Audience
 
@@ -36,5 +37,6 @@ dotnet test
 ```
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

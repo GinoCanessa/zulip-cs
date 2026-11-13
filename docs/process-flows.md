@@ -77,5 +77,6 @@ Both return `ZulipResponse`, so resource behavior remains consistent independent
 Ordinary HTTP timeout/cancellation becomes a failed response with fresh diagnostics and no unsolicited console output. Both production backends retain HTTP status/body and reject failed HTTP statuses independently of JSON success; request-local HTTP objects are disposed after materialization. Disposing `ZulipClient` releases only an internally owned HTTP client; subsequent transport operations throw `ObjectDisposedException`, including Try methods.
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

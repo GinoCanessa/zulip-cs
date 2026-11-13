@@ -89,5 +89,6 @@ The INI parser accepts `=` and `:` separators, choosing the first separator and 
 - Add/update corresponding documentation in this `docs/` folder.
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

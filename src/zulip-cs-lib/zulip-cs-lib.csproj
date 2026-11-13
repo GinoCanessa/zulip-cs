@@ -3,10 +3,12 @@
 
   <PropertyGroup>
     <RootNamespace>zulip_cs_lib</RootNamespace>
+    <Description>C# client for the Zulip REST API with async resource APIs and HttpClient or curl transport.</Description>
     <PackageTags>Zulip;CSharp;Library;</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/GinoCanessa/zulip-cs</PackageProjectUrl>
+    <PackageReleaseNotes>https://github.com/GinoCanessa/zulip-cs/blob/v$(Version)/CHANGELOG.md</PackageReleaseNotes>
   </PropertyGroup>
   
 </Project>

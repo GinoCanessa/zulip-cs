@@ -220,4 +220,4 @@ For throwing variants:
 ---
 Updated on: 2026-11-13
 
-Published version: 0.0.1-beta.4
+Documentation version: 1.0.0
