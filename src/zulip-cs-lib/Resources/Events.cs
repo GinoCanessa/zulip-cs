@@ -193,7 +193,8 @@ namespace zulip_cs_lib.Resources
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/events", data);
 
             if (ResponsePayload.TryRead(response, "Events.GetEvents", "events", JsonValueKind.Array,
-                out List<EventObject>? events, out string? details, ValidateEvents))
+                out List<EventObject>? events, out string? details, ValidateEvents,
+                response.TakeUnobservedEvents, ValidateEventMessages))
             {
                 return (true, null, events!);
             }
@@ -231,11 +232,23 @@ namespace zulip_cs_lib.Resources
                     {
                         return "event message 'id' must fit the supported integer message-ID representation.";
                     }
-                    message.Deserialize<MessageObject>();
                 }
             }
 
             return null;
+        }
+
+        /// <summary>Validates and retains typed message data without discarding a duplicate parse.</summary>
+        /// <param name="events">The shape-validated events returned to the caller.</param>
+        private static void ValidateEventMessages(List<EventObject> events)
+        {
+            foreach (EventObject item in events)
+            {
+                if (item.Type == "message")
+                {
+                    _ = item.Message;
+                }
+            }
         }
 
         /// <summary>Gets events from a queue (throwing version).</summary>

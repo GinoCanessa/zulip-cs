@@ -55,6 +55,10 @@ namespace zulip_cs_lib
                     {
                         response.RetainUnobservedMessages(options);
                     }
+                    else if (field.Name == "events")
+                    {
+                        response.RetainUnobservedEvents(options);
+                    }
                 }
                 catch (JsonException exception)
                 {

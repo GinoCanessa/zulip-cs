@@ -18,6 +18,117 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Events resource.</summary>
     public class EventTests
     {
+        /// <summary>Results retain independent nested state whether or not diagnostics were observed first.</summary>
+        /// <param name="observed">Whether to observe envelope events before fetching.</param>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Events_GetEvents_ReturnedPayloadDoesNotAliasDiagnostics(bool observed)
+        {
+            const string json = """
+                {"result":"success","events":[{"id":1,"type":"message","flags":["read"],
+                 "message":{"id":31,"content":"original","flags":["mentioned"],
+                  "reactions":[{"user_id":10,"emoji_name":"smile"}],"future":{"nested":["owned"]}}}]}
+                """;
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(json)!;
+            if (observed) Assert.Single(response.Events!);
+            Events resource = new Events((_, _, _) => Task.FromResult(response));
+            EventObject returned = Assert.Single(await resource.GetEvents("queue", -1));
+            returned.Flags!.Add("changed");
+            returned.Message!.Content = "changed";
+            returned.Message.Flags!.Add("changed");
+            returned.Message.Reactions![0].EmojiName = "changed";
+            returned.Message.AdditionalProperties["future"] = JsonSerializer.SerializeToElement("changed");
+            EventObject diagnostic = Assert.Single(response.Events!);
+            EventObject repeated = Assert.Single(await resource.GetEvents("queue", -1));
+            foreach (EventObject item in new[] { diagnostic, repeated })
+            {
+                Assert.NotSame(returned, item);
+                Assert.NotSame(returned.Message, item.Message);
+                Assert.Equal(new[] { "read" }, item.Flags);
+                Assert.Equal("original", item.Message!.Content);
+                Assert.Equal(new[] { "mentioned" }, item.Message.Flags);
+                Assert.Equal("smile", item.Message.Reactions![0].EmojiName);
+                Assert.Equal("owned", item.Message.AdditionalProperties["future"].GetProperty("nested")[0].GetString());
+            }
+            Assert.Equal("original", returned.RawMessage!.Value.GetProperty("content").GetString());
+            Assert.Equal("original", response.RawPayload.GetProperty("events")[0].GetProperty("message").GetProperty("content").GetString());
+            Assert.Equal("original", JsonSerializer.SerializeToElement(returned).GetProperty("message").GetProperty("content").GetString());
+        }
+
+        /// <summary>Concurrent reads of one retained response never return the same mutable event/message graph.</summary>
+        [Fact]
+        public async Task Events_GetEvents_SharedResponseConcurrentReadsRemainIndependent()
+        {
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                """{"result":"success","events":[{"id":1,"type":"message","message":{"id":31,"content":"original"}}]}""")!;
+            Events resource = new Events((_, _, _) => Task.FromResult(response));
+            List<EventObject>[] results = await Task.WhenAll(
+                Task.Run(() => resource.GetEvents("queue", -1), TestContext.Current.CancellationToken),
+                Task.Run(() => resource.GetEvents("queue", -1), TestContext.Current.CancellationToken));
+            EventObject first = Assert.Single(results[0]);
+            EventObject second = Assert.Single(results[1]);
+            first.Message!.Content = "changed";
+            Assert.NotSame(first, second);
+            Assert.NotSame(first.Message, second.Message);
+            Assert.Equal("original", second.Message!.Content);
+            Assert.Equal("original", Assert.Single(response.Events!).Message!.Content);
+        }
+
+        /// <summary>Assigned diagnostics and replaced raw payloads cannot enable a stale typed shortcut.</summary>
+        /// <param name="assigned">Whether diagnostics are explicitly assigned.</param>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Events_GetEvents_ReplacedRawPayloadRemainsAuthoritative(bool assigned)
+        {
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                """{"result":"success","events":[{"id":1,"type":"heartbeat"}]}""")!;
+            if (assigned) response.Events = [new EventObject { Id = 2, Type = "heartbeat" }];
+            response.RawPayload = JsonSerializer.SerializeToElement(new
+            {
+                result = "success", events = new[] { new { id = 3, type = "heartbeat" } }
+            });
+            Events resource = new Events((_, _, _) => Task.FromResult(response));
+            Assert.Equal(3, Assert.Single(await resource.GetEvents("queue", -1)).Id);
+            Assert.Equal(assigned ? 2 : 1, Assert.Single(response.Events!).Id);
+        }
+
+        /// <summary>Custom envelope options do not override the resource's default raw-deserialization contract.</summary>
+        [Fact]
+        public async Task Events_GetEvents_CustomOptionsRetainRawDeserializationSemantics()
+        {
+            JsonSerializerOptions options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                """{"result":"success","events":[{"id":1,"type":"message","FLAGS":["read"],"message":{"id":31}}]}""", options)!;
+            Events resource = new Events((_, _, _) => Task.FromResult(response));
+            EventObject returned = Assert.Single(await resource.GetEvents("queue", -1));
+            Assert.Null(returned.Flags);
+            Assert.Equal("read", returned.ExtensionData!["FLAGS"][0].GetString());
+            Assert.Equal(new[] { "read" }, Assert.Single(response.Events!).Flags);
+        }
+
+        /// <summary>Duplicate and case-variant wire keys retain raw-authoritative resource behavior.</summary>
+        /// <param name="caseVariant">Whether the second key differs in case under custom options.</param>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Events_GetEvents_DuplicateFieldsPreserveRawSemantics(bool caseVariant)
+        {
+            string second = caseVariant ? "EVENTS" : "events";
+            JsonSerializerOptions options = caseVariant
+                ? new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                : JsonSerializerOptions.Default;
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                $$$"""
+                {"result":"success","events":[{"id":1,"type":"heartbeat"}],
+                 "{{{second}}}":[{"id":2,"type":"heartbeat"}]}
+                """, options)!;
+            Events resource = new Events((_, _, _) => Task.FromResult(response));
+            Assert.Equal(caseVariant ? 1 : 2, Assert.Single(await resource.GetEvents("queue", -1)).Id);
+            Assert.Equal(2, Assert.Single(response.Events!).Id);
+        }
+
         /// <summary>A known message event must include its usable message payload.</summary>
         [Fact]
         public async Task Events_MessageEventRequiresPayload()

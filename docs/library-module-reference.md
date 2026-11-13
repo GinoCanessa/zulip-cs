@@ -30,7 +30,7 @@ Unit tests for client/resource functionality and parser behavior.
   - `HttpClient`
   - `curl` subprocess
 - Initializes resource instances with a shared request delegate.
-- Retains `LastResponse`, the most recently completed response, including warnings/owned raw JSON. Use detailed results for per-request association under concurrency.
+- Retains `LastResponse`, the most recently completed response, including warnings/owned raw JSON. Use detailed results for per-request association under concurrency. Message/event resource lists can reuse an unobserved default-options wire list; diagnostics rebuild independently from owned JSON. Returned message events retain their validated typed message alongside the original raw snapshot.
 - Implements `IDisposable`, releasing only internally owned HTTP clients. Reuse the wrapper; injected clients and upload streams remain caller-owned. Transport operations after disposal throw `ObjectDisposedException`, including Try methods.
 - Ordinary HTTP timeout/cancellation failures return explicit Try diagnostics without unsolicited console output. HTTP request/response content, including password bootstrap, is disposed after materialization without disposing the reusable/injected client.
 - Both production backends retain actual HTTP status/body; HTTP failure overrides success-shaped JSON. Status zero remains accepted for caller-created request delegates, not as a successful production curl result.

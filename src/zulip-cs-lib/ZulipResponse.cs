@@ -34,17 +34,75 @@ namespace zulip_cs_lib
         /// <summary>The owned response snapshot.</summary>
         private JsonElement _rawPayload;
 
-        /// <summary>Synchronizes typed-message observation and one-time transfer.</summary>
-        private readonly object _messagesLock = new object();
+        /// <summary>Synchronizes typed collection observation, invalidation and one-time transfer.</summary>
+        private readonly object _collectionsLock = new object();
 
         /// <summary>The current typed diagnostic messages.</summary>
-        private List<MessageObject>? _messages;
+        private ParsedCollection<MessageObject>? _messages;
 
-        /// <summary>The original owned messages field, used to rebuild independent diagnostics after transfer.</summary>
-        private JsonElement _messagesPayload;
+        /// <summary>The current typed diagnostic events.</summary>
+        private ParsedCollection<EventObject>? _events;
 
-        /// <summary>Whether the default-options wire list has not been observed or assigned.</summary>
-        private bool _canTakeMessages;
+        /// <summary>Retains one transferable wire list and rebuilds independent diagnostics on observation.</summary>
+        /// <typeparam name="T">The collection element type.</typeparam>
+        private sealed class ParsedCollection<T>
+        {
+            /// <summary>The current typed diagnostic list.</summary>
+            private List<T>? _value;
+
+            /// <summary>The original owned field retained for diagnostic reconstruction.</summary>
+            private JsonElement _payload;
+
+            /// <summary>Whether the unobserved default-options list can be transferred.</summary>
+            private bool _canTake;
+
+            /// <summary>Gets or assigns the diagnostic list under the response's collection lock.</summary>
+            internal List<T>? Value
+            {
+                get
+                {
+                    _canTake = false;
+                    if (_value == null && _payload.ValueKind == JsonValueKind.Array)
+                    {
+                        _value = _payload.Deserialize<List<T>>();
+                    }
+                    return _value;
+                }
+                set
+                {
+                    _value = value;
+                    _payload = default;
+                    _canTake = false;
+                }
+            }
+
+            /// <summary>Retains an equivalent default-options field for one resource read.</summary>
+            /// <param name="root">The owned response snapshot.</param>
+            /// <param name="field">The field name.</param>
+            /// <param name="options">The envelope deserialization options.</param>
+            internal void Retain(JsonElement root, string field, JsonSerializerOptions options)
+            {
+                if (ReferenceEquals(options, JsonSerializerOptions.Default) && _value != null)
+                {
+                    _payload = root.GetProperty(field);
+                    _canTake = true;
+                }
+            }
+
+            /// <summary>Invalidates transfer without changing the original diagnostic state.</summary>
+            internal void Invalidate() => _canTake = false;
+
+            /// <summary>Transfers an unobserved list once, preserving its owned diagnostic payload.</summary>
+            /// <returns>The transferable list, or null for authoritative deserialization.</returns>
+            internal List<T>? Take()
+            {
+                if (!_canTake) return null;
+                List<T>? value = _value;
+                _value = null;
+                _canTake = false;
+                return value;
+            }
+        }
 
         /// <summary>Explicitly assigned nonnullable wire integers, distinguishing missing fields from valid zero values.</summary>
         private readonly Dictionary<string, int> _assignedIntegers = [];
@@ -59,10 +117,11 @@ namespace zulip_cs_lib
             get => _rawPayload;
             internal set
             {
-                lock (_messagesLock)
+                lock (_collectionsLock)
                 {
                     _rawPayload = value.ValueKind == JsonValueKind.Undefined ? default : value.Clone();
-                    _canTakeMessages = false;
+                    _messages?.Invalidate();
+                    _events?.Invalidate();
                 }
             }
         }
@@ -135,23 +194,16 @@ namespace zulip_cs_lib
         {
             get
             {
-                lock (_messagesLock)
+                lock (_collectionsLock)
                 {
-                    _canTakeMessages = false;
-                    if (_messages == null && _messagesPayload.ValueKind == JsonValueKind.Array)
-                    {
-                        _messages = _messagesPayload.Deserialize<List<MessageObject>>();
-                    }
-                    return _messages;
+                    return _messages?.Value;
                 }
             }
             set
             {
-                lock (_messagesLock)
+                lock (_collectionsLock)
                 {
-                    _messages = value;
-                    _messagesPayload = default;
-                    _canTakeMessages = false;
+                    (_messages ??= new ParsedCollection<MessageObject>()).Value = value;
                 }
             }
         }
@@ -160,13 +212,9 @@ namespace zulip_cs_lib
         /// <param name="options">The options used to parse the typed envelope.</param>
         internal void RetainUnobservedMessages(JsonSerializerOptions options)
         {
-            lock (_messagesLock)
+            lock (_collectionsLock)
             {
-                if (ReferenceEquals(options, JsonSerializerOptions.Default) && _messages != null)
-                {
-                    _messagesPayload = _rawPayload.GetProperty("messages");
-                    _canTakeMessages = true;
-                }
+                _messages?.Retain(_rawPayload, "messages", options);
             }
         }
 
@@ -174,13 +222,9 @@ namespace zulip_cs_lib
         /// <returns>The transferable list, or null when authoritative deserialization is still required.</returns>
         internal List<MessageObject>? TakeUnobservedMessages()
         {
-            lock (_messagesLock)
+            lock (_collectionsLock)
             {
-                if (!_canTakeMessages) return null;
-                List<MessageObject>? messages = _messages;
-                _messages = null;
-                _canTakeMessages = false;
-                return messages;
+                return _messages?.Take();
             }
         }
 
@@ -261,7 +305,43 @@ namespace zulip_cs_lib
 
         /// <summary>Gets or sets the events list.</summary>
         [JsonPropertyName("events")]
-        public List<EventObject>? Events { get; set; }
+        public List<EventObject>? Events
+        {
+            get
+            {
+                lock (_collectionsLock)
+                {
+                    return _events?.Value;
+                }
+            }
+            set
+            {
+                lock (_collectionsLock)
+                {
+                    (_events ??= new ParsedCollection<EventObject>()).Value = value;
+                }
+            }
+        }
+
+        /// <summary>Retains default-options wire events for one unobserved resource read.</summary>
+        /// <param name="options">The options used to parse the typed envelope.</param>
+        internal void RetainUnobservedEvents(JsonSerializerOptions options)
+        {
+            lock (_collectionsLock)
+            {
+                _events?.Retain(_rawPayload, "events", options);
+            }
+        }
+
+        /// <summary>Transfers unobserved events while retaining independent diagnostic state.</summary>
+        /// <returns>The transferable list, or null for authoritative deserialization.</returns>
+        internal List<EventObject>? TakeUnobservedEvents()
+        {
+            lock (_collectionsLock)
+            {
+                return _events?.Take();
+            }
+        }
 
         /// <summary>Gets or sets a single message object.</summary>
         [JsonPropertyName("message")]
