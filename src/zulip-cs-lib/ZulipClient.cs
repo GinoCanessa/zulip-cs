@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using zulip_cs_lib.Resources;
 
@@ -68,12 +71,31 @@ namespace zulip_cs_lib
         /// <summary>The navigation views.</summary>
         private NavigationViews _navigationViews = null!;
 
+        /// <summary>The files resource.</summary>
+        private Files _files = null!;
+
+        /// <summary>The bounded upload timeout.</summary>
+        private TimeSpan _uploadTimeout = TimeSpan.FromSeconds(100);
+
         /// <summary>The curl command.</summary>
         private string? _curlCommand;
 
         /// <summary>Gets diagnostics and warnings for the most recently completed request, or null before any request completes.</summary>
         /// <remarks>Concurrent callers must use detailed results for per-operation association; completion order is not invocation order.</remarks>
         public ZulipResponse? LastResponse { get; private set; }
+
+        /// <summary>Gets or sets the timeout for an entire upload, including reading its response; defaults to 100 seconds.</summary>
+        /// <remarks>Must be positive and finite. Curl cleanup has an independent additional five-second bound.</remarks>
+        public TimeSpan UploadTimeout
+        {
+            get => _uploadTimeout;
+            set
+            {
+                if (value <= TimeSpan.Zero || value.TotalMilliseconds > int.MaxValue - 1)
+                    throw new ArgumentOutOfRangeException(nameof(value), "UploadTimeout must be positive and finite.");
+                _uploadTimeout = value;
+            }
+        }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
         /// <param name="site">      The Zulip site URL.</param>
@@ -110,7 +132,7 @@ namespace zulip_cs_lib
             string authHeader = _userEmail + ":" + _apiKey;
             _authHeader = "Basic " + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(authHeader));
 
-            InitializeResources(DoZulipRequestHttpClient);
+            InitializeResources(DoZulipRequestHttpClient, DoZulipUploadHttpClient);
         }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
@@ -150,7 +172,7 @@ namespace zulip_cs_lib
             string authHeader = _userEmail + ":" + _apiKey;
             _authHeader = "Basic " + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(authHeader));
 
-            InitializeResources(DoZulipRequestCurl);
+            InitializeResources(DoZulipRequestCurl, DoZulipUploadCurl);
         }
 
 
@@ -168,7 +190,7 @@ namespace zulip_cs_lib
         public ZulipClient(string zuliprcFilename)
         : this(zuliprcFilename, true)
         {
-            InitializeResources(DoZulipRequestHttpClient);
+            InitializeResources(DoZulipRequestHttpClient, DoZulipUploadHttpClient);
         }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
@@ -250,7 +272,7 @@ namespace zulip_cs_lib
         : this(zuliprcFilename, false)
         {
             _httpClient = httpClient;
-            InitializeResources(DoZulipRequestHttpClient);
+            InitializeResources(DoZulipRequestHttpClient, DoZulipUploadHttpClient);
         }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
@@ -260,7 +282,7 @@ namespace zulip_cs_lib
         : this(zuliprcFilename, false)
         {
             _curlCommand = curlCommand;
-            InitializeResources(DoZulipRequestCurl);
+            InitializeResources(DoZulipRequestCurl, DoZulipUploadCurl);
         }
 
         /// <summary>Gets the Messages Interface.</summary>
@@ -299,10 +321,15 @@ namespace zulip_cs_lib
         /// <summary>Gets the Navigation Views Interface.</summary>
         public NavigationViews NavigationViews => _navigationViews;
 
+        /// <summary>Gets the streaming upload and attachment interface.</summary>
+        public Files Files => _files;
+
         /// <summary>Initializes all resource classes.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
+        /// <param name="doUpload">The focused streaming upload delegate.</param>
         private void InitializeResources(
-            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest,
+            Func<Stream, string, string, CancellationToken, Task<ZulipResponse>> doUpload)
         {
             _messages = new Messages(doZulipRequest);
             _channels = new Channels(doZulipRequest);
@@ -316,6 +343,7 @@ namespace zulip_cs_lib
             _savedSnippets = new SavedSnippets(doZulipRequest);
             _reminders = new Reminders(doZulipRequest);
             _navigationViews = new NavigationViews(doZulipRequest);
+            _files = new Files(doZulipRequest, doUpload);
         }
 
         /// <summary>Fetches an API key from the server using username and password.</summary>
@@ -375,6 +403,296 @@ namespace zulip_cs_lib
                     client.Dispose();
                 }
             }
+        }
+
+        /// <summary>Creates identical streaming multipart content for both upload transports.</summary>
+        /// <param name="stream">The caller-owned input stream.</param>
+        /// <param name="filename">The multipart filename.</param>
+        /// <param name="contentType">The validated MIME content type.</param>
+        /// <returns>The disposable content, which never owns the input stream.</returns>
+        private static MultipartFormDataContent CreateUploadContent(Stream stream, string filename, string contentType)
+        {
+            MultipartFormDataContent multipart = new MultipartFormDataContent();
+            StreamContent file = new StreamContent(new NonDisposingStream(stream));
+            try
+            {
+                file.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+                ContentDispositionHeaderValue disposition = new ContentDispositionHeaderValue("form-data")
+                {
+                    Name = "filename"
+                };
+                // The FileName setter rejects embedded quotes even when escaped. Set the validated quoted parameter directly.
+                string encodedFilename = filename.Any(character => character > 127)
+                    ? "=?utf-8?B?" + Convert.ToBase64String(Encoding.UTF8.GetBytes(filename)) + "?="
+                    : filename.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+                disposition.Parameters.Add(new NameValueHeaderValue("filename", "\"" + encodedFilename + "\""));
+                disposition.FileNameStar = filename;
+                file.Headers.ContentDisposition = disposition;
+                multipart.Add(file);
+                return multipart;
+            }
+            catch
+            {
+                file.Dispose();
+                multipart.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Uploads streaming multipart content through HttpClient with bounded cancellation.</summary>
+        /// <param name="stream">The readable caller-owned stream.</param>
+        /// <param name="filename">The multipart filename.</param>
+        /// <param name="contentType">The validated MIME content type.</param>
+        /// <param name="cancellationToken">Caller cancellation.</param>
+        /// <returns>The response and actual HTTP diagnostics.</returns>
+        private async Task<ZulipResponse> DoZulipUploadHttpClient(
+            Stream stream, string filename, string contentType, CancellationToken cancellationToken)
+        {
+            TimeSpan timeout = UploadTimeout;
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(timeout);
+            ZulipResponse result = new ZulipResponse();
+            try
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, new Uri(_siteUri, "api/v1/user_uploads"));
+                request.Headers.Add("Authorization", _authHeader);
+                request.Content = CreateUploadContent(stream, filename, contentType);
+                using HttpResponseMessage response = await _httpClient!.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                result.HttpResponseCode = (int)response.StatusCode;
+                string body = await response.Content.ReadAsStringAsync(deadline.Token);
+                result = ParseUploadResponse(body, (int)response.StatusCode);
+            }
+            catch (OperationCanceledException exception)
+            {
+                result.CaughtException = deadline.IsCancellationRequested
+                    ? UploadCancellationDetails(cancellationToken, timeout)
+                    : "Upload canceled by HTTP transport: " + UploadExceptionDetails(exception);
+                result.Success = false;
+            }
+            catch (Exception exception)
+            {
+                result.CaughtException = "Upload failed: " + UploadExceptionDetails(exception);
+                result.Success = false;
+            }
+            LastResponse = result;
+            return result;
+        }
+
+        /// <summary>Uploads the .NET multipart serialization directly to curl's binary stdin.</summary>
+        /// <param name="stream">The readable caller-owned stream.</param>
+        /// <param name="filename">The multipart filename.</param>
+        /// <param name="contentType">The validated MIME content type.</param>
+        /// <param name="cancellationToken">Caller cancellation.</param>
+        /// <returns>The response with the actual body, HTTP status and process diagnostics.</returns>
+        private async Task<ZulipResponse> DoZulipUploadCurl(
+            Stream stream, string filename, string contentType, CancellationToken cancellationToken)
+        {
+            TimeSpan timeout = UploadTimeout;
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(timeout);
+            ZulipResponse result = new ZulipResponse();
+            Process? process = null;
+            bool started = false;
+            Task? completion = null;
+            try
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                using MultipartFormDataContent multipart = CreateUploadContent(stream, filename, contentType);
+                string suffix = "\nZULIP_UPLOAD_STATUS_" + Guid.NewGuid().ToString("N") + ":";
+                ProcessStartInfo start = BuildCurlStartInfo(HttpMethod.Post, "api/v1/user_uploads", null);
+                start.RedirectStandardInput = true;
+                start.ArgumentList.Add("--http1.1");
+                start.ArgumentList.Add("--upload-file");
+                start.ArgumentList.Add("-");
+                start.ArgumentList.Add("--header");
+                start.ArgumentList.Add("Content-Type: " + multipart.Headers.ContentType);
+                start.ArgumentList.Add("--header");
+                start.ArgumentList.Add("Expect:");
+                long? length = multipart.Headers.ContentLength;
+                if (length.HasValue)
+                {
+                    start.ArgumentList.Add("--header");
+                    start.ArgumentList.Add("Content-Length: " + length.Value.ToString(CultureInfo.InvariantCulture));
+                    start.ArgumentList.Add("--header");
+                    start.ArgumentList.Add("Transfer-Encoding:");
+                }
+                start.ArgumentList.Add("--max-time");
+                start.ArgumentList.Add(timeout.TotalSeconds.ToString("0.#########", CultureInfo.InvariantCulture));
+                start.ArgumentList.Add("--write-out");
+                start.ArgumentList.Add(suffix + "%{http_code}");
+                process = new Process { StartInfo = start };
+                if (!process.Start()) throw new InvalidOperationException("Unable to start curl.");
+                started = true;
+
+                Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+                Task<string> stderr = process.StandardError.ReadToEndAsync();
+                Task exited = process.WaitForExitAsync();
+                Task<Exception?> write = WriteCurlUploadAsync(multipart, process, deadline.Token);
+                completion = Task.WhenAll(stdout, stderr, exited, write);
+                await completion.WaitAsync(deadline.Token);
+                deadline.Token.ThrowIfCancellationRequested();
+
+                string output = await stdout;
+                string errors = await stderr;
+                Exception? writeError = await write;
+                int marker = output.LastIndexOf(suffix, StringComparison.Ordinal);
+                bool hasStatus = marker >= 0 && output.Length == marker + suffix.Length + 3 &&
+                    int.TryParse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+                int status = hasStatus
+                    ? int.Parse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture)
+                    : 0;
+                string body = marker >= 0 ? output.Substring(0, marker) : output;
+                result = ParseUploadResponse(body, status);
+                if (!hasStatus || status == 0 || process.ExitCode != 0 || writeError != null)
+                {
+                    string failure = process.ExitCode == 28
+                        ? UploadCancellationDetails(cancellationToken, timeout)
+                        : process.ExitCode != 0
+                            ? $"curl exited with code {process.ExitCode}: {errors.Trim()}"
+                            : writeError != null
+                                ? "Upload stream failed: " + UploadExceptionDetails(writeError)
+                                : "curl returned no HTTP upload status.";
+                    result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
+                        ? failure : result.CaughtException + " " + failure;
+                    result.Success = false;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                result.CaughtException = UploadCancellationDetails(cancellationToken, timeout);
+                result.Success = false;
+            }
+            catch (System.ComponentModel.Win32Exception exception)
+            {
+                result.CaughtException = "Unable to start curl: " + exception.Message;
+                result.Success = false;
+            }
+            catch (Exception exception)
+            {
+                result.CaughtException = "Upload failed: " + UploadExceptionDetails(exception);
+                result.Success = false;
+            }
+            finally
+            {
+                if (process != null)
+                {
+                    string? cleanupError = started ? await CleanupCurlUploadAsync(process, completion) : null;
+                    if (cleanupError != null)
+                    {
+                        result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
+                            ? cleanupError : result.CaughtException + " " + cleanupError;
+                        result.Success = false;
+                    }
+                    process.Dispose();
+                }
+            }
+            LastResponse = result;
+            return result;
+        }
+
+        /// <summary>Serializes multipart incrementally and always sends binary stdin EOF, even on early rejection.</summary>
+        /// <param name="multipart">The streaming multipart content.</param>
+        /// <param name="process">The exact child process receiving binary stdin.</param>
+        /// <param name="cancellationToken">The upload deadline.</param>
+        /// <returns>A write failure to consider after collecting the actual server response.</returns>
+        private static async Task<Exception?> WriteCurlUploadAsync(
+            MultipartFormDataContent multipart, Process process, CancellationToken cancellationToken)
+        {
+            Exception? failure = null;
+            try
+            {
+                // curl -F @- buffers stdin; --upload-file - streams these already serialized multipart bytes.
+                await multipart.CopyToAsync(process.StandardInput.BaseStream, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                try { process.StandardInput.Close(); }
+                catch (Exception exception) { failure ??= exception; }
+            }
+            return failure;
+        }
+
+        /// <summary>Kills only the upload's child process tree and bounds pipe/exit cleanup independently of caller cancellation.</summary>
+        /// <param name="process">The specific upload process.</param>
+        /// <param name="completion">The concurrent serializer, pipe drains and exit wait.</param>
+        /// <returns>A cleanup failure, or null.</returns>
+        private static async Task<string?> CleanupCurlUploadAsync(Process process, Task? completion)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    try { process.Kill(entireProcessTree: true); }
+                    catch (InvalidOperationException) when (process.HasExited) { }
+                }
+                Task pending = completion ?? process.WaitForExitAsync();
+                await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                return null;
+            }
+            catch (TimeoutException)
+            {
+                if (completion != null)
+                    _ = completion.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                return "Upload process cleanup exceeded five seconds.";
+            }
+            catch (Exception exception)
+            {
+                return "Upload process cleanup failed: " + exception.Message;
+            }
+        }
+
+        /// <summary>Parses an upload envelope without losing its actual HTTP status or malformed body.</summary>
+        /// <param name="body">The actual response body without curl's write-out suffix.</param>
+        /// <param name="status">The actual HTTP response status.</param>
+        /// <returns>The completed response.</returns>
+        private static ZulipResponse ParseUploadResponse(string body, int status)
+        {
+            ZulipResponse result;
+            try
+            {
+                result = JsonSerializer.Deserialize<ZulipResponse>(body)
+                    ?? throw new JsonException("The Zulip response must be a JSON object.");
+                result.Success = status is >= 200 and < 300 &&
+                    result.Result == ZulipResponse.ZulipResultSuccess && string.IsNullOrEmpty(result.CaughtException);
+            }
+            catch (JsonException exception)
+            {
+                result = new ZulipResponse { CaughtException = exception.Message, Success = false };
+            }
+            result.HttpResponseCode = status;
+            result.HttpResponseBody = body;
+            return result;
+        }
+
+        /// <summary>Distinguishes caller cancellation from the configured upload deadline without exposing invocation arguments.</summary>
+        /// <param name="cancellationToken">The caller's token.</param>
+        /// <param name="timeout">The configured timeout.</param>
+        /// <returns>The failure details.</returns>
+        private static string UploadCancellationDetails(CancellationToken cancellationToken, TimeSpan timeout) =>
+            cancellationToken.IsCancellationRequested
+                ? "Upload canceled."
+                : "Upload timed out after " + timeout.TotalSeconds.ToString(CultureInfo.InvariantCulture) + " seconds.";
+
+        /// <summary>Preserves underlying stream/transport failures without logging commands, arguments or credentials.</summary>
+        /// <param name="exception">The failed stream or transport operation.</param>
+        /// <returns>The exception messages, including wrapped I/O failures.</returns>
+        private static string UploadExceptionDetails(Exception exception)
+        {
+            string details = exception.Message;
+            Exception? inner = exception.InnerException;
+            for (int depth = 0; inner != null && depth < 4; depth++)
+            {
+                if (!string.Equals(exception.Message, inner.Message, StringComparison.Ordinal))
+                    details += " " + inner.Message;
+                inner = inner.InnerException;
+            }
+            return details;
         }
 
         /// <summary>Executes the zulip request via curl.</summary>
