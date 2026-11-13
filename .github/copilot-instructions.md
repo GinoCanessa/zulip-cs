@@ -27,7 +27,7 @@ The solution has three projects:
 
 ## Conventions
 
-- **Target frameworks**: Multi-targets `net8.0`, `net9.0`, and `net10.0` with C# 14 (`LangVersion 14`).
+- **Target frameworks**: Multi-targets `net11.0` (primary), `net10.0`, `net9.0`, and `net8.0` with C# 14 (`LangVersion 14`). The default SDK is .NET 11, selected by `global.json`.
 - **Namespaces**: Use underscores matching project names — `zulip_cs_lib`, `zulip_cs_lib.Resources`, `zulip_set_lib.tests` (note: the test namespace uses `zulip_set_lib`, matching the `.csproj` filename typo).
 - **Try pattern**: Public API methods come in pairs — a throwing version (e.g., `Messages.Delete()`) and a `Try` variant returning `(bool success, string details)` or `(bool success, string details, ulong messageId)` value tuples.
 - **Request delegate pattern**: Resource classes accept a `Func<HttpMethod, string, Dictionary<string, string>, Task<ZulipResponse>>` delegate instead of depending on `HttpClient` directly, enabling the `HttpClient`/`curl` dual-backend design.

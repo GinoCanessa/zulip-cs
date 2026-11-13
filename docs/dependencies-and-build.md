@@ -4,9 +4,14 @@
 
 All projects target:
 
-- `net8.0`
-- `net9.0`
+- `net11.0` (primary)
 - `net10.0`
+- `net9.0`
+- `net8.0`
+
+The repository's `global.json` selects the .NET 11 SDK (11.0.100 or a newer
+11.0 feature band). Install the .NET 8, 9, and 10 runtimes as well to run the
+tests for all supported targets.
 
 Language version:
 

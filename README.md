@@ -7,12 +7,21 @@ Note that this package is in the EARLY development stages and should not be used
 [![Tests](https://github.com/GinoCanessa/zulip-cs/actions/workflows/build-and-test.yaml/badge.svg)](https://github.com/GinoCanessa/zulip-cs/actions/workflows/build-and-test.yaml)
 [![Publish dotnet library](https://img.shields.io/nuget/v/zulip-cs-lib.svg)](https://github.com/GinoCanessa/zulip-cs/actions/workflows/nuget-library.yaml)
 
-`zulip-cs-lib` is a C# library for the [Zulip](http://zulip.com) REST API. It targets **net8.0**, **net9.0**, and **net10.0**, uses **System.Text.Json** for serialization, and takes as few dependencies as possible.
+`zulip-cs-lib` is a C# library for the [Zulip](http://zulip.com) REST API. Its primary target is **net11.0**, with continued support for **net10.0**, **net9.0**, and **net8.0**. It uses **System.Text.Json** for serialization and takes as few dependencies as possible.
+
+Development and CI use the **.NET 11 SDK** by default, selected by `global.json`.
 
 Code was developed using several existing projects for guidance and inspiration:
 * [swift-zulip-api](https://github.com/zulip/swift-zulip-api)
 * [zulip-csharp](https://github.com/zulip/zulip-csharp)
 * [zulip-js](https://github.com/zulip/zulip-js)
+
+## Releases
+
+Publishing a GitHub Release for a `v<version>` tag triggers NuGet trusted
+publishing after the tagged source passes cross-platform tests. Pushing a tag
+alone does not publish. See the [release process](docs/releasing.md) for
+one-time configuration, versioning, and validation-only manual runs.
 
 ## Getting Started
 

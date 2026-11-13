@@ -4,7 +4,8 @@ This guide is intended for developers joining `zulip-cs` and needing to become p
 
 ## 1. Prerequisites
 
-- .NET SDK capable of building `net8.0`, `net9.0`, and `net10.0` targets.
+- .NET 11 SDK (11.0.100 or a newer 11.0 feature band), selected by `global.json`. The primary target is `net11.0`, with continued support for `net10.0`, `net9.0`, and `net8.0`.
+- .NET 8, 9, and 10 runtimes to run tests for the older targets.
 - Access to a Zulip server and API credentials (for manual integration checks).
 - Git and a shell environment (PowerShell/bash).
 

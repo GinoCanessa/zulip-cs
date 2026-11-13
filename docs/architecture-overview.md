@@ -8,7 +8,7 @@ The solution contains three projects:
 - `zulip-cs-cli` (console app): command-line interface built on top of the library.
 - `zulip-cs-lib.tests` (test project): automated tests for library and client behavior.
 
-All projects multi-target: `net8.0;net9.0;net10.0`.
+All projects multi-target: `net11.0;net10.0;net9.0;net8.0`, with .NET 11 as the primary target and default SDK.
 
 ## High-Level Component Diagram
 

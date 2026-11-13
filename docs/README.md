@@ -11,6 +11,7 @@ This folder contains onboarding and technical reference documentation for contri
 5. [Library and Module Reference](./library-module-reference.md)
 6. [CLI Command Reference](./cli-command-reference.md)
 7. [Dependencies and Build/Test](./dependencies-and-build.md)
+8. [Release Process and Trusted Publishing](./releasing.md)
 
 ## Audience
 
