@@ -415,6 +415,28 @@ namespace zulip_set_lib.tests
             Assert.False(json.TryGetProperty("lastEventId64", out _));
         }
 
+        /// <summary>Registration aliases do not restart reference resolution inside a surrounding object graph.</summary>
+        [Fact]
+        public async Task Events_RegistrationSerializationPreservesGraphReferences()
+        {
+            RegistrationResult registration = await CreateEvents(
+                "{\"result\":\"success\",\"queue_id\":\"queue\",\"last_event_id\":2147483648}").Register();
+            JsonSerializerOptions options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                ReferenceHandler = ReferenceHandler.Preserve
+            };
+            JsonElement list = JsonSerializer.SerializeToElement(new List<RegistrationResult> { registration, registration }, options);
+            JsonElement items = list.GetProperty("$values");
+            string id = items[0].GetProperty("$id").GetString()!;
+            Assert.NotEqual(list.GetProperty("$id").GetString(), id);
+            Assert.Equal(id, items[1].GetProperty("$ref").GetString());
+            Assert.Equal(2147483648L, items[0].GetProperty("lastEventId").GetInt64());
+            JsonElement container = JsonSerializer.SerializeToElement(new { first = registration, second = registration }, options);
+            id = container.GetProperty("first").GetProperty("$id").GetString()!;
+            Assert.NotEqual(container.GetProperty("$id").GetString(), id);
+            Assert.Equal(id, container.GetProperty("second").GetProperty("$ref").GetString());
+        }
+
         /// <summary>A caller-supplied nested response converter used to verify option forwarding.</summary>
         private sealed class RegistrationResponseTestConverter : JsonConverter<ZulipResponse>
         {

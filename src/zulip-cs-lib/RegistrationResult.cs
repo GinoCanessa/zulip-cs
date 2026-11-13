@@ -11,7 +11,6 @@ namespace zulip_cs_lib
     /// Initial fields are optional and depend on fetch filters and server capabilities.
     /// Registration does not fetch message bodies; fetch those through the messages resource.
     /// </remarks>
-    [JsonConverter(typeof(RegistrationResultConverter))]
     public sealed class RegistrationResult
     {
         /// <summary>Initializes a result from a validated registration envelope.</summary>
@@ -63,7 +62,15 @@ namespace zulip_cs_lib
         public int LastEventId => checked((int)LastEventId64);
 
         /// <summary>Gets the lossless initial polling cursor; -1 is a legitimate value.</summary>
+        [JsonIgnore]
         public long LastEventId64 { get; }
+
+        /// <summary>Keeps the cursor alias inside native object serialization and its graph-wide reference context.</summary>
+        [JsonInclude]
+        [JsonExtensionData]
+        [JsonConverter(typeof(RegistrationCursorConverter))]
+        internal Dictionary<string, object> CursorSerializationData =>
+            new Dictionary<string, object> { [nameof(LastEventId)] = LastEventId64 };
 
         /// <summary>Gets the server feature level, when supplied.</summary>
         public int? ZulipFeatureLevel { get; }
