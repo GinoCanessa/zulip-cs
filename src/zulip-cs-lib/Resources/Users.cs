@@ -8,7 +8,7 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib.Resources
 {
     /// <summary>Users resource.</summary>
-    public class Users
+    public partial class Users
     {
         /// <summary>The users API endpoint.</summary>
         private const string _usersApiEndpoint = "api/v1/users";

@@ -10,7 +10,7 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib.Resources
 {
     /// <summary>A zulip client messages.</summary>
-    public class Messages
+    public partial class Messages
     {
         /// <summary>The message API endpoint.</summary>
         private const string _messageApiEndpoint = "api/v1/messages";
@@ -669,12 +669,31 @@ namespace zulip_cs_lib.Resources
         /// <summary>Renders a message to HTML.</summary>
         /// <param name="content">The message content to render.</param>
         /// <returns>An asynchronous result that yields (success, details, renderedHtml).</returns>
-        public async Task<(bool success, string? details, string? renderedHtml)> TryRender(string content)
+        public Task<(bool success, string? details, string? renderedHtml)> TryRender(string content)
+        {
+            return TryRenderCore(content, null);
+        }
+
+        /// <summary>Renders HTML and optionally requests asynchronous URL-embed data (feature level 513).</summary>
+        /// <param name="content">The message Markdown.</param>
+        /// <param name="populateUrlEmbedData">Whether to populate URL embeds and receive url_embed_data events.</param>
+        /// <returns>The rendered HTML, or explicit failure details.</returns>
+        public Task<(bool success, string? details, string? renderedHtml)> TryRender(string content, bool populateUrlEmbedData)
+        {
+            return TryRenderCore(content, populateUrlEmbedData);
+        }
+
+        /// <summary>Renders HTML with optional URL-embed population.</summary>
+        /// <param name="content">The message Markdown.</param>
+        /// <param name="populateUrlEmbedData">Null omits the optional wire parameter.</param>
+        /// <returns>The rendered HTML, or explicit failure details.</returns>
+        private async Task<(bool success, string? details, string? renderedHtml)> TryRenderCore(string content, bool? populateUrlEmbedData)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "content", content }
             };
+            if (populateUrlEmbedData is bool populate) data.Add("populate_url_embed_data", populate.ToString().ToLowerInvariant());
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_messageApiEndpoint}/render", data);
 
@@ -699,6 +718,17 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
+            return result.renderedHtml!;
+        }
+
+        /// <summary>Renders HTML with URL-embed population, throwing on failure (feature level 513).</summary>
+        /// <param name="content">The message Markdown.</param>
+        /// <param name="populateUrlEmbedData">Whether to populate URL embeds and receive asynchronous events.</param>
+        /// <returns>The rendered HTML.</returns>
+        public async Task<string> Render(string content, bool populateUrlEmbedData)
+        {
+            var result = await TryRender(content, populateUrlEmbedData);
+            if (!result.success) throw new Exception(result.details);
             return result.renderedHtml!;
         }
 

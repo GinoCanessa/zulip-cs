@@ -17,6 +17,102 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for new Messages methods added in Phase 1 and Phase 4.</summary>
     public class MessageExtendedTests
     {
+        /// <summary>One narrow update preserves the processed range and request-local diagnostics without looping.</summary>
+        [Fact]
+        public async Task Messages_UpdateFlagsForNarrow_PreservesProgress()
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests,
+                "{\"result\":\"success\",\"processed_count\":11,\"updated_count\":8,\"first_processed_id\":35,\"last_processed_id\":55," +
+                "\"found_oldest\":false,\"found_newest\":true,\"ignored_because_not_subscribed_channels\":[12,13]," +
+                "\"ignored_parameters_unsupported\":[\"future_option\"]}");
+            NarrowFlagUpdateResult update = await client.Messages.UpdateFlagsForNarrow("43", 4, 8,
+                [new Narrow(Narrow.NarrowOperator.Channel, "a,b")], Messages.FlagOperation.Remove, "read", false);
+            Assert.Equal(11, update.ProcessedCount);
+            Assert.Equal(8, update.UpdatedCount);
+            Assert.Equal(35UL, update.FirstProcessedId);
+            Assert.Equal(55UL, update.LastProcessedId);
+            Assert.False(update.FoundOldest);
+            Assert.True(update.FoundNewest);
+            Assert.Equal(new[] { 12, 13 }, update.IgnoredBecauseNotSubscribedChannels);
+            Assert.Same(client.LastResponse, update.Response);
+            Assert.Contains("future_option", update.Response.IgnoredParametersUnsupported!);
+            HttpRequestMessage request = Assert.Single(requests);
+            Assert.Equal("/api/v1/messages/flags/narrow", request.RequestUri!.AbsolutePath);
+            Dictionary<string, string> form = await Utils.ReadForm(request);
+            Assert.Equal("43", form["anchor"]);
+            Assert.Equal("4", form["num_before"]);
+            Assert.Equal("8", form["num_after"]);
+            Assert.Equal("remove", form["op"]);
+            Assert.Equal("false", form["include_anchor"]);
+            using JsonDocument narrow = JsonDocument.Parse(form["narrow"]);
+            Assert.Equal("a,b", narrow.RootElement[0].GetProperty("operand").GetString());
+        }
+
+        /// <summary>Empty ranges retain null cursors rather than successful invented message IDs.</summary>
+        [Fact]
+        public async Task Messages_UpdateFlagsForNarrow_EmptyRange()
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests,
+                "{\"result\":\"success\",\"processed_count\":0,\"updated_count\":0,\"first_processed_id\":null," +
+                "\"last_processed_id\":null,\"found_oldest\":true,\"found_newest\":true}");
+            NarrowFlagUpdateResult update = await client.Messages.UpdateFlagsForNarrow(
+                "oldest", 0, 1000, [], Messages.FlagOperation.Add, "read");
+            Assert.Equal(0, update.ProcessedCount);
+            Assert.Null(update.FirstProcessedId);
+            Assert.Null(update.LastProcessedId);
+            Assert.True(update.FoundOldest);
+            Assert.Equal("[]", (await Utils.ReadForm(Assert.Single(requests)))["narrow"]);
+        }
+
+        /// <summary>Malformed range success and server errors remain explicit in Try and throwing calls.</summary>
+        /// <param name="json">The malformed or failed response.</param>
+        [Theory]
+        [InlineData("{\"result\":\"success\"}")]
+        [InlineData("{\"result\":\"success\",\"processed_count\":\"0\"}")]
+        [InlineData("{\"result\":\"success\",\"processed_count\":0,\"updated_count\":0,\"first_processed_id\":null,\"last_processed_id\":null,\"found_oldest\":true}")]
+        [InlineData("{\"result\":\"error\",\"msg\":\"Unsupported flag\"}")]
+        public async Task Messages_UpdateFlagsForNarrow_InvalidResult(string json)
+        {
+            ZulipClient client = Utils.CreateCapturingClient([], json, json);
+            var result = await client.Messages.TryUpdateFlagsForNarrow("newest", 0, 10, [], Messages.FlagOperation.Add, "read");
+            Assert.False(result.success);
+            Assert.Null(result.update);
+            Assert.Contains("Messages.UpdateFlagsForNarrow failed:", result.details);
+            await Assert.ThrowsAsync<Exception>(() => client.Messages.UpdateFlagsForNarrow(
+                "newest", 0, 10, [], Messages.FlagOperation.Add, "read"));
+        }
+
+        /// <summary>Invalid range and operation inputs make no mutation request.</summary>
+        [Fact]
+        public async Task Messages_UpdateFlagsForNarrow_InvalidInputDoesNotSend()
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests);
+            Assert.False((await client.Messages.TryUpdateFlagsForNarrow("not-an-anchor", 0, 10, [], Messages.FlagOperation.Add, "read")).success);
+            Assert.False((await client.Messages.TryUpdateFlagsForNarrow("oldest", -1, 10, [], Messages.FlagOperation.Add, "read")).success);
+            Assert.False((await client.Messages.TryUpdateFlagsForNarrow("oldest", 0, 10, [], (Messages.FlagOperation)99, "read")).success);
+            Assert.False((await client.Messages.TryUpdateFlagsForNarrow("oldest", 0, 10,
+                [new Narrow(Narrow.NarrowOperator.Channels, "invalid")], Messages.FlagOperation.Add, "read")).success);
+            Assert.Empty(requests);
+        }
+
+        /// <summary>The old render signature omits options; explicit FL513 embed requests preserve warnings.</summary>
+        [Fact]
+        public async Task Messages_Render_ExplicitEmbedsAndLegacyOmission()
+        {
+            List<HttpRequestMessage> requests = [];
+            const string json = "{\"result\":\"success\",\"rendered\":\"<p>link</p>\"}";
+            ZulipClient client = Utils.CreateCapturingClient(requests, json, json, json);
+            Assert.Equal("<p>link</p>", await client.Messages.Render("https://example.org"));
+            Assert.Equal("<p>link</p>", await client.Messages.Render("https://example.org", true));
+            Assert.True((await client.Messages.TryRender("https://example.org", false)).success);
+            Assert.False((await Utils.ReadForm(requests[0])).ContainsKey("populate_url_embed_data"));
+            Assert.Equal("true", (await Utils.ReadForm(requests[1]))["populate_url_embed_data"]);
+            Assert.Equal("false", (await Utils.ReadForm(requests[2]))["populate_url_embed_data"]);
+        }
+
         /// <summary>A returned object cannot invent the message identity absent from the wire.</summary>
         [Fact]
         public async Task Messages_ReadsRequireNestedIdentities()

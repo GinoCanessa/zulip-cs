@@ -42,6 +42,18 @@ namespace zulip_cs_lib
                 return "presence field 'server_timestamp' must be Number.";
             }
 
+            return ValidateData(presence);
+        }
+
+        /// <summary>Validates one presence entry without inventing active/idle or legacy status values.</summary>
+        /// <param name="presence">The user's presence entry.</param>
+        /// <returns>A validation error, or null.</returns>
+        internal static string? ValidateData(JsonElement presence)
+        {
+            if (presence.ValueKind != JsonValueKind.Object)
+            {
+                return "presence entry must be Object.";
+            }
             bool hasData = false;
             foreach (JsonProperty property in presence.EnumerateObject())
             {
