@@ -635,10 +635,13 @@ namespace zulip_set_lib.tests
 
         /// <summary>Cancellation and deadlines stop real curl and its serializer, independently of a stalled local receiver.</summary>
         /// <param name="callerCancellation">Whether the caller cancels instead of timing out.</param>
+        /// <param name="pendingRead">Whether the source awaits data instead of streaming endlessly.</param>
         [Theory(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
-        [InlineData(true)]
-        [InlineData(false)]
-        public async Task Files_CurlCancellationAndTimeoutStopStreaming(bool callerCancellation)
+        [InlineData(true, false)]
+        [InlineData(false, false)]
+        [InlineData(true, true)]
+        [InlineData(false, true)]
+        public async Task Files_CurlCancellationAndTimeoutStopStreaming(bool callerCancellation, bool pendingRead)
         {
             using CancellationTokenSource deadline = TestDeadline();
             using CancellationTokenSource cancellation =
@@ -652,17 +655,25 @@ namespace zulip_set_lib.tests
             {
                 ZulipClient client = new ZulipClient(LoopbackSite(listener), Email, Key, "curl")
                 {
-                    UploadTimeout = callerCancellation ? TimeSpan.FromSeconds(10) : TimeSpan.FromSeconds(1)
+                    UploadTimeout = TimeSpan.FromSeconds(callerCancellation ? 10 : pendingRead ? 3 : 1)
                 };
-                using UploadStream input = new UploadStream([], false, endless: true);
+                using UploadStream input = pendingRead
+                    ? new BlockingUploadStream()
+                    : new UploadStream([], false, endless: true);
                 Task<(bool success, string? details, FileUploadResult? result)> operation =
                     client.Files.TryUpload(input, "large.dat", cancellationToken: cancellation.Token);
                 await entered.Task.WaitAsync(deadline.Token);
+                if (input is BlockingUploadStream blockingInput)
+                    await blockingInput.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), deadline.Token);
                 if (callerCancellation) cancellation.Cancel();
-                (bool success, string? details, FileUploadResult? result) outcome = await operation.WaitAsync(deadline.Token);
+                (bool success, string? details, FileUploadResult? result) outcome =
+                    await operation.WaitAsync(TimeSpan.FromSeconds(8), deadline.Token);
                 Assert.False(outcome.success);
+                Assert.Null(outcome.result);
                 Assert.Contains(callerCancellation ? "canceled" : "timed out", outcome.details);
                 Assert.False(input.Disposed);
+                if (input is BlockingUploadStream canceledInput)
+                    Assert.True(canceledInput.CancellationObserved);
                 long finalReads = input.BytesRead;
                 release.TrySetResult();
                 await server.WaitAsync(deadline.Token);

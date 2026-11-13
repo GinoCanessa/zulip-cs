@@ -304,7 +304,7 @@ Upload `url` is required (FL272); returned `filename` is optional (FL285). Attac
 
 `Files.GetTemporaryUrl(pathId)` accepts a complete logical attachment `path_id` such as `1/ab/token/report.pdf`, not an upload URL, and returns an unauthenticated link. Use it immediately and **do not persist it**; the server-configured lifetime is generally 60 seconds. `Files.CheckThumbnailStatus(pathId)` (FL479) checks once: `false` means not ready, not a request failure. The caller owns polling. Reserved filename characters are encoded per path segment.
 
-Curl uploads require working nonblocking stdin support (`--upload-file .`), verified here with Windows curl 8.22.0; older Windows curl builds lack that capability. Nonblocking input lets curl handle early HTTP rejection while the source awaits data. The client then cancels cooperative reads without losing received diagnostics; interrupted uploads never become success merely because the server returned 2xx. Ordinary curl requests also retain actual HTTP status independently of their JSON body.
+Curl uploads require working nonblocking stdin support (`--upload-file .`), verified here with Windows curl 8.22.0; older Windows curl builds lack that capability. Upload deadlines are enforced by .NET rather than curl's `--max-time`, which can block Unix stdin reads before early responses are processed. Nonblocking input lets curl handle early HTTP rejection while the source awaits data. The client then cancels cooperative reads without losing received diagnostics; interrupted uploads never become success merely because the server returned 2xx. Ordinary curl requests also retain actual HTTP status independently of their JSON body.
 
 **Fetch an API key from username/password:**
 
