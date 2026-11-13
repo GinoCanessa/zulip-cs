@@ -46,6 +46,7 @@ namespace zulip_cs_lib
                     ?? throw new JsonException("The Zulip response must be a JSON object.");
                 result.HttpResponseCode = (int)response.StatusCode;
                 result.HttpResponseBody = body;
+                result.Success = ResponsePayload.IsSuccessful(result);
                 if (!ResponsePayload.TryRead<string>(result, operation, "api_key", JsonValueKind.String,
                     out string? key, out string? details, ValidateCredentialText) ||
                     !ResponsePayload.TryRead<string>(result, operation, "email", JsonValueKind.String,

@@ -92,7 +92,9 @@ namespace zulip_set_lib.tests
                     fields = Utils.DecodeForm(await request.Content!.ReadAsStringAsync(cancellation));
                 }
                 return Json("{\"result\":\"success\",\"api_key\":\"jwt-key\",\"email\":\"jwt@example.org\"," +
-                    "\"user\":{\"user_id\":17,\"email\":\"jwt@example.org\",\"full_name\":\"JWT User\"}," +
+                    (includeProfile == true
+                        ? "\"user\":{\"user_id\":17,\"email\":\"jwt@example.org\",\"full_name\":\"JWT User\"},"
+                        : "") +
                     "\"ignored_parameters_unsupported\":[\"future\"]}");
             }));
             ApiKeyResult credentials = await ZulipClient.FetchApiKeyJwt("https://example.org", token, includeProfile, http,
@@ -107,6 +109,7 @@ namespace zulip_set_lib.tests
             if (includeProfile == true) Assert.Equal(17, credentials.User!.UserId);
             else Assert.Null(credentials.User);
             Assert.Equal(200, credentials.Response.HttpResponseCode);
+            Assert.True(credentials.Response.Success);
             Assert.Contains("future", credentials.Response.IgnoredParametersUnsupported!);
             Assert.DoesNotContain("jwt-key", credentials.ToString());
             using HttpResponseMessage second = await http.GetAsync("https://example.org/", TestContext.Current.CancellationToken);
