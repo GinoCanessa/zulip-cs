@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,32 @@ namespace zulip_set_lib.tests
     [Collection("Console isolation")]
     public class ZulipClientTests
     {
+        /// <summary>Both public owned construction routes dispose the actual underlying transport.</summary>
+        /// <param name="fromConfig">Whether to construct using a configuration file.</param>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task ZulipClient_PublicOwnedConstructorsDisposeTransport(bool fromConfig)
+        {
+            string file = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(file, $"[api]\nsite={_site}\nemail={_email}\nkey={_key}\n");
+                using ZulipClient client = fromConfig
+                    ? new ZulipClient(file)
+                    : new ZulipClient(_site, _email, _key);
+                FieldInfo field = typeof(ZulipClient).GetField("_httpClient", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                HttpClient transport = Assert.IsType<HttpClient>(field.GetValue(client));
+                client.Dispose();
+                await Assert.ThrowsAsync<ObjectDisposedException>(
+                    () => transport.GetAsync("relative-without-base", TestContext.Current.CancellationToken));
+            }
+            finally
+            {
+                File.Delete(file);
+            }
+        }
+
         /// <summary>Owned transports are disposed once while injected transports remain reusable.</summary>
         /// <param name="owned">Whether the wrapper owns the HTTP client.</param>
         [Theory]

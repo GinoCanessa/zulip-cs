@@ -18,6 +18,29 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Events resource.</summary>
     public class EventTests
     {
+        /// <summary>Typed validation still rejects malformed messages after observation or a failed transfer.</summary>
+        /// <param name="observed">Whether to observe diagnostics before the first read.</param>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Events_GetEvents_MalformedMessageFailsRepeatedFallbackReads(bool observed)
+        {
+            ZulipResponse response = JsonSerializer.Deserialize<ZulipResponse>(
+                """{"result":"success","events":[{"id":1,"type":"message","message":{"id":31,"sender_id":"bad"}}]}""")!;
+            if (observed) Assert.Single(response.Events!);
+            Events resource = new Events((_, _, _) => Task.FromResult(response));
+            for (int index = 0; index < 2; index++)
+            {
+                (bool success, string? details, List<EventObject>? events) result =
+                    await resource.TryGetEvents("queue", -1);
+                Assert.False(result.success);
+                Assert.Null(result.events);
+                Assert.Contains("Invalid response payload for 'events'", result.details);
+                Assert.Contains("sender_id", result.details);
+            }
+            await Assert.ThrowsAsync<Exception>(() => resource.GetEvents("queue", -1));
+        }
+
         /// <summary>Results retain independent nested state whether or not diagnostics were observed first.</summary>
         /// <param name="observed">Whether to observe envelope events before fetching.</param>
         [Theory]
