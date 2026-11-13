@@ -56,6 +56,16 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryCreate(string title, string content)
         {
+            var result = await TryCreateWithId(title, content);
+            return (result.success, result.details);
+        }
+
+        /// <summary>Creates a saved snippet and returns its identity (feature level 297).</summary>
+        /// <param name="title">The snippet title.</param>
+        /// <param name="content">The snippet Markdown.</param>
+        /// <returns>The created identity, or explicit failure details.</returns>
+        public async Task<(bool success, string? details, int snippetId)> TryCreateWithId(string title, string content)
+        {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "title", title },
@@ -64,12 +74,24 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, _endpoint, data);
 
-            if (ResponsePayload.IsSuccessful(response))
+            if (ResponsePayload.TryRead<int>(response, "SavedSnippets.Create", "saved_snippet_id", JsonValueKind.Number,
+                out int snippetId, out string? details))
             {
-                return (true, null);
+                return (true, null, snippetId);
             }
 
-            return (false, "SavedSnippets.Create failed: " + response.GetFailureMessage());
+            return (false, details, 0);
+        }
+
+        /// <summary>Creates a saved snippet and returns its identity, throwing on failure.</summary>
+        /// <param name="title">The snippet title.</param>
+        /// <param name="content">The snippet Markdown.</param>
+        /// <returns>The created identity.</returns>
+        public async Task<int> CreateWithId(string title, string content)
+        {
+            var result = await TryCreateWithId(title, content);
+            if (!result.success) throw new Exception(result.details);
+            return result.snippetId;
         }
 
         /// <summary>Creates a saved snippet (throwing version).</summary>

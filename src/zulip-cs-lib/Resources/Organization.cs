@@ -211,6 +211,24 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryCreateProfileField(int fieldType, string name, string? hint = null)
         {
+            var result = await TryCreateProfileFieldWithId(fieldType, name, hint);
+            return (result.success, result.details);
+        }
+
+        /// <summary>Creates a custom profile field and returns its identity; requires an organization administrator.</summary>
+        /// <param name="fieldType">The documented profile field type.</param>
+        /// <param name="name">The field name.</param>
+        /// <param name="hint">Optional help text.</param>
+        /// <param name="options">Optional field configuration, gated by the caller's server feature level.</param>
+        /// <returns>The created field identity, or explicit failure details.</returns>
+        public async Task<(bool success, string? details, int fieldId)> TryCreateProfileFieldWithId(
+            int fieldType, string name, string? hint = null, ProfileFieldOptions? options = null)
+        {
+            if (options?.FieldData is JsonElement fieldData && fieldData.ValueKind != JsonValueKind.Object)
+            {
+                return (false, "Organization.CreateProfileField failed: field_data must be a JSON object.", 0);
+            }
+
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "field_type", fieldType.ToString() },
@@ -218,15 +236,35 @@ namespace zulip_cs_lib.Resources
             };
 
             if (hint != null) data.Add("hint", hint);
+            if (options?.FieldData is JsonElement configuration) data.Add("field_data", configuration.GetRawText());
+            if (options?.DisplayInProfileSummary is bool summary) data.Add("display_in_profile_summary", summary.ToString().ToLowerInvariant());
+            if (options?.Required is bool required) data.Add("required", required.ToString().ToLowerInvariant());
+            if (options?.EditableByUser is bool editable) data.Add("editable_by_user", editable.ToString().ToLowerInvariant());
+            if (options?.UseForUserMatching is bool matching) data.Add("use_for_user_matching", matching.ToString().ToLowerInvariant());
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/realm/profile_fields", data);
 
-            if (ResponsePayload.IsSuccessful(response))
+            if (ResponsePayload.TryRead<int>(response, "Organization.CreateProfileField", "id", JsonValueKind.Number,
+                out int fieldId, out string? details))
             {
-                return (true, null);
+                return (true, null, fieldId);
             }
 
-            return (false, "Organization.CreateProfileField failed: " + response.GetFailureMessage());
+            return (false, details, 0);
+        }
+
+        /// <summary>Creates a custom profile field and returns its identity, throwing on failure.</summary>
+        /// <param name="fieldType">The documented profile field type.</param>
+        /// <param name="name">The field name.</param>
+        /// <param name="hint">Optional help text.</param>
+        /// <param name="options">Optional field configuration.</param>
+        /// <returns>The created field identity.</returns>
+        public async Task<int> CreateProfileFieldWithId(
+            int fieldType, string name, string? hint = null, ProfileFieldOptions? options = null)
+        {
+            var result = await TryCreateProfileFieldWithId(fieldType, name, hint, options);
+            if (!result.success) throw new Exception(result.details);
+            return result.fieldId;
         }
 
         /// <summary>Creates a custom profile field (throwing version).</summary>
