@@ -109,7 +109,7 @@ namespace zulip_cs_lib.Resources
             }
 
             if (!payload.TryGetProperty("last_event_id", out JsonElement cursor) ||
-                cursor.ValueKind != JsonValueKind.Number || !cursor.TryGetInt32(out _))
+                cursor.ValueKind != JsonValueKind.Number || !cursor.TryGetInt64(out _))
             {
                 return "required field 'last_event_id' must be an integer.";
             }
@@ -135,9 +135,17 @@ namespace zulip_cs_lib.Resources
             if (allPublicStreams != null) data.Add("all_public_streams", allPublicStreams.Value.ToString().ToLowerInvariant());
 
             (bool success, string? details, RegistrationResult? registration) = await TryRegisterCore(data);
-            return success
-                ? (true, null, registration!.QueueId, registration.LastEventId)
-                : (false, details?.Replace("Events.Register failed:", "Events.RegisterQueue failed:"), null, -1);
+            if (!success)
+            {
+                return (false, details?.Replace("Events.Register failed:", "Events.RegisterQueue failed:"), null, -1);
+            }
+            if (registration!.LastEventId64 is < int.MinValue or > int.MaxValue)
+            {
+                return (false, $"Events.RegisterQueue failed: Cursor exceeds the legacy int range. " +
+                    $"Queue '{registration.QueueId}' was allocated; delete it when unused, and use Register with LastEventId64.",
+                    registration.QueueId, -1);
+            }
+            return (true, null, registration.QueueId, registration.LastEventId);
         }
 
         /// <summary>Registers an event queue (throwing version).</summary>
@@ -159,9 +167,19 @@ namespace zulip_cs_lib.Resources
         /// <param name="dontBlock">(Optional) Whether to return immediately.</param>
         /// <remarks>Missing or invalid events fail explicitly; an actual empty events array is valid.</remarks>
         /// <returns>An asynchronous result that yields (success, details, events).</returns>
-        public async Task<(bool success, string? details, List<EventObject>? events)> TryGetEvents(
+        public Task<(bool success, string? details, List<EventObject>? events)> TryGetEvents(
             string queueId,
             int lastEventId,
+            bool? dontBlock = null) => TryGetEvents(queueId, (long)lastEventId, dontBlock);
+
+        /// <summary>Gets events using a lossless last-received event cursor.</summary>
+        /// <param name="queueId">The queue ID.</param>
+        /// <param name="lastEventId">The last event ID received, including -1.</param>
+        /// <param name="dontBlock">Optional nonblocking polling.</param>
+        /// <returns>The Try result with validated events or failure details.</returns>
+        public async Task<(bool success, string? details, List<EventObject>? events)> TryGetEvents(
+            string queueId,
+            long lastEventId,
             bool? dontBlock = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
@@ -225,7 +243,15 @@ namespace zulip_cs_lib.Resources
         /// <param name="lastEventId">The last acknowledged event ID.</param>
         /// <param name="dontBlock">Optional nonblocking polling.</param>
         /// <returns>The returned events, including an actual empty array.</returns>
-        public async Task<List<EventObject>> GetEvents(string queueId, int lastEventId, bool? dontBlock = null)
+        public Task<List<EventObject>> GetEvents(string queueId, int lastEventId, bool? dontBlock = null) =>
+            GetEvents(queueId, (long)lastEventId, dontBlock);
+
+        /// <summary>Gets events using a lossless cursor, throwing on invalid or failed responses.</summary>
+        /// <param name="queueId">The queue ID.</param>
+        /// <param name="lastEventId">The last acknowledged event ID, including -1.</param>
+        /// <param name="dontBlock">Optional nonblocking polling.</param>
+        /// <returns>The returned events, including an actual empty array.</returns>
+        public async Task<List<EventObject>> GetEvents(string queueId, long lastEventId, bool? dontBlock = null)
         {
             (bool success, string? details, List<EventObject>? events) result = await TryGetEvents(queueId, lastEventId, dontBlock);
             if (!result.success) throw new Exception(result.details);

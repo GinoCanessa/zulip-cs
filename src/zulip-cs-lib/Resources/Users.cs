@@ -90,7 +90,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details, user).</returns>
         public async Task<(bool success, string? details, UserObject? user)> TryGetUserByEmail(string email)
         {
-            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{email}", null);
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{Uri.EscapeDataString(email)}", null);
 
             if (ResponsePayload.TryRead<UserObject>(response, "Users.GetUserByEmail", "user", JsonValueKind.Object,
                 out UserObject? user, out string? details, ResponsePayload.ValidateUser))
@@ -401,7 +401,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>The Try result with detailed presence, or standard failure details.</returns>
         public async Task<(bool success, string? details, PresenceResult? presence)> TryGetPresenceDetails(string idOrEmail)
         {
-            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{idOrEmail}/presence", null);
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/{Uri.EscapeDataString(idOrEmail)}/presence", null);
             if (ResponsePayload.TryRead<UserPresencePayload>(response, "Users.GetPresenceDetails", null, JsonValueKind.Object,
                 out UserPresencePayload? payload, out string? details, UserPresencePayload.Validate))
             {

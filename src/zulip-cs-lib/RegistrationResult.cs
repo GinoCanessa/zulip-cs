@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using zulip_cs_lib.Models;
 
 namespace zulip_cs_lib
@@ -20,7 +21,7 @@ namespace zulip_cs_lib
             RawInitialState = payload.Clone();
             Response = response;
             QueueId = payload.GetProperty("queue_id").GetString()!;
-            LastEventId = payload.GetProperty("last_event_id").GetInt32();
+            LastEventId64 = payload.GetProperty("last_event_id").GetInt64();
             ZulipFeatureLevel = ReadOptional<int?>(payload, "zulip_feature_level", JsonValueKind.Number);
             ZulipVersion = ReadOptional<string>(payload, "zulip_version", JsonValueKind.String);
             ZulipMergeBase = ReadOptional<string>(payload, "zulip_merge_base", JsonValueKind.String);
@@ -55,8 +56,14 @@ namespace zulip_cs_lib
         /// <summary>Gets the nonempty allocated queue ID.</summary>
         public string QueueId { get; }
 
-        /// <summary>Gets the initial polling cursor; -1 is a legitimate value.</summary>
-        public int LastEventId { get; }
+        /// <summary>Gets the legacy int cursor; use LastEventId64 for lossless polling.</summary>
+        /// <exception cref="OverflowException">The cursor is outside the int range.</exception>
+        [JsonIgnore]
+        public int LastEventId => checked((int)LastEventId64);
+
+        /// <summary>Gets the lossless initial polling cursor; -1 is a legitimate value.</summary>
+        [JsonPropertyName("LastEventId")]
+        public long LastEventId64 { get; }
 
         /// <summary>Gets the server feature level, when supplied.</summary>
         public int? ZulipFeatureLevel { get; }

@@ -275,6 +275,56 @@ namespace zulip_set_lib.tests
             Assert.Equal("<p>Preview</p>", item.RenderedContent);
         }
 
+        /// <summary>Returned cursors can be passed directly into the next poll without narrowing.</summary>
+        /// <param name="cursor">The received event ID.</param>
+        [Theory]
+        [InlineData(-1L)]
+        [InlineData(0L)]
+        [InlineData(2147483648L)]
+        [InlineData(long.MaxValue)]
+        public async Task Events_ReceivedIdRoundTripsIntoNextPoll(long cursor)
+        {
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests,
+                $"{{\"result\":\"success\",\"events\":[{{\"id\":{cursor},\"type\":\"future\"}}]}}",
+                "{\"result\":\"success\",\"events\":[]}");
+            EventObject item = Assert.Single(await client.Events.GetEvents("queue", -1, true));
+            Assert.Empty(await client.Events.GetEvents("queue", item.Id, true));
+            Assert.Equal(cursor.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Utils.DecodeForm(requests[1].RequestUri!.Query)["last_event_id"]);
+            Assert.Equal("true", Utils.DecodeForm(requests[1].RequestUri!.Query)["dont_block"]);
+        }
+
+        /// <summary>Long registration preserves diagnostics and rejects legacy projections without losing queue identity.</summary>
+        [Fact]
+        public async Task Events_LongRegistrationPreservesCursorAndLegacyCleanup()
+        {
+            const long cursor = 2147483648L;
+            Events resource = CreateEvents($"{{\"result\":\"success\",\"queue_id\":\"queue:long\",\"last_event_id\":{cursor}}}");
+            RegistrationResult registration = await resource.Register();
+            Assert.Equal(cursor, registration.LastEventId64);
+            Assert.Equal(cursor, registration.Response.LastEventId64);
+            Assert.Equal(cursor, registration.RawInitialState.GetProperty("last_event_id").GetInt64());
+            Assert.Throws<OverflowException>(() => registration.LastEventId);
+            Assert.Throws<OverflowException>(() => registration.Response.LastEventId);
+            JsonElement json = JsonSerializer.SerializeToElement(registration);
+            Assert.Equal(cursor, json.GetProperty("LastEventId").GetInt64());
+            Assert.Equal(cursor, json.GetProperty("Response").GetProperty("last_event_id").GetInt64());
+            Assert.False(json.GetProperty("Response").TryGetProperty("LastEventId64", out _));
+            (bool success, string? details, string? queueId, int lastEventId) legacy = await resource.TryRegisterQueue();
+            Assert.False(legacy.success);
+            Assert.Equal("queue:long", legacy.queueId);
+            Assert.Contains("LastEventId64", legacy.details);
+            Assert.Contains("queue:long", legacy.details);
+            Assert.Contains("delete", legacy.details);
+            await Assert.ThrowsAsync<Exception>(() => resource.RegisterQueue());
+            Events assigned = new Events((method, url, data) => Task.FromResult(new ZulipResponse
+            {
+                Result = "success", QueueId = "assigned", LastEventId64 = cursor
+            }));
+            Assert.Equal(cursor, (await assigned.Register()).LastEventId64);
+        }
+
         /// <summary>Fetches the actual initial registration fields, capabilities and request-local warnings.</summary>
         [Fact]
         public async Task Events_Register_DetailedInitialStateAndWarnings()
@@ -434,7 +484,7 @@ namespace zulip_set_lib.tests
         [InlineData(",\"queue_id\":\"queue\",\"last_event_id\":null", "last_event_id")]
         [InlineData(",\"queue_id\":\"queue\",\"last_event_id\":\"0\"", "last_event_id")]
         [InlineData(",\"queue_id\":\"queue\",\"last_event_id\":1.5", "last_event_id")]
-        [InlineData(",\"queue_id\":\"queue\",\"last_event_id\":2147483648", "last_event_id")]
+        [InlineData(",\"queue_id\":\"queue\",\"last_event_id\":9223372036854775808", "last_event_id")]
         public async Task Events_Register_RequiredDataFails(string fields, string expected)
         {
             Events resource = CreateEvents($"{{\"result\":\"success\"{fields}}}");

@@ -17,6 +17,44 @@ namespace zulip_set_lib.tests
     /// <summary>Tests for Users resource.</summary>
     public class UserTests
     {
+        /// <summary>Both backends transmit each reserved-character identity as one path segment.</summary>
+        /// <param name="email">The logical identity.</param>
+        [Theory]
+        [InlineData("a#b@example.org")]
+        [InlineData("a?b@example.org")]
+        [InlineData("a%b@example.org")]
+        [InlineData("a/b@example.org")]
+        [InlineData("\u00e9@example.org")]
+        public async Task Users_EmailRoutesEncodeReservedCharacters(string email)
+        {
+            string userBody = "{\"result\":\"success\",\"user\":{\"user_id\":5,\"full_name\":\"User\",\"email\":" +
+                JsonSerializer.Serialize(email) + "}}";
+            const string presenceBody = "{\"result\":\"success\",\"presence\":{\"active_timestamp\":123}}";
+            List<HttpRequestMessage> requests = [];
+            ZulipClient http = Utils.CreateCapturingClient(requests, userBody, presenceBody);
+            Assert.Equal(email, (await http.Users.GetUserByEmail(email)).Email);
+            await http.Users.GetPresenceDetails(email);
+
+            List<Uri> curlUris = [];
+            ZulipClient curl = new ZulipClient("https://zulip.example.org", "zulip@example.org", "key", "curl");
+            Users users = new Users((method, url, data) =>
+            {
+                curlUris.Add(new Uri(curl.BuildCurlStartInfo(method, url, data).ArgumentList[3]));
+                return Task.FromResult(JsonSerializer.Deserialize<ZulipResponse>(
+                    url.EndsWith("/presence", StringComparison.Ordinal) ? presenceBody : userBody)!);
+            });
+            Assert.Equal(email, (await users.GetUserByEmail(email)).Email);
+            await users.GetPresenceDetails(email);
+            for (int index = 0; index < 2; index++)
+            {
+                Uri uri = requests[index].RequestUri!;
+                Assert.Equal("/api/v1/users/" + Uri.EscapeDataString(email) + (index == 1 ? "/presence" : ""), uri.AbsolutePath);
+                Assert.Empty(uri.Query);
+                Assert.Empty(uri.Fragment);
+                Assert.Equal(uri, curlUris[index]);
+            }
+        }
+
         /// <summary>Missing group identity does not become a successful zero.</summary>
         [Fact]
         public async Task Users_GetGroups_RequiresNestedIdentity()

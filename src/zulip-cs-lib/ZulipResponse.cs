@@ -37,6 +37,9 @@ namespace zulip_cs_lib
         /// <summary>Explicitly assigned nonnullable wire integers, distinguishing missing fields from valid zero values.</summary>
         private readonly Dictionary<string, int> _assignedIntegers = [];
 
+        /// <summary>The explicitly assigned long event cursor, distinguishing absence from zero.</summary>
+        private long? _lastEventId;
+
         /// <summary>Gets the owned, original JSON response, unaffected by subsequent property changes.</summary>
         [JsonIgnore]
         public JsonElement RawPayload
@@ -169,12 +172,21 @@ namespace zulip_cs_lib
         [JsonPropertyName("queue_id")]
         public string? QueueId { get; set; }
 
-        /// <summary>Gets or sets the last event ID.</summary>
-        [JsonPropertyName("last_event_id")]
+        /// <summary>Gets or sets the legacy int cursor; use LastEventId64 for lossless polling.</summary>
+        /// <exception cref="OverflowException">The cursor is outside the int range.</exception>
+        [JsonIgnore]
         public int LastEventId
         {
-            get => _assignedIntegers.GetValueOrDefault("last_event_id");
-            set => _assignedIntegers["last_event_id"] = value;
+            get => checked((int)LastEventId64);
+            set => LastEventId64 = value;
+        }
+
+        /// <summary>Gets or sets the lossless last event ID.</summary>
+        [JsonPropertyName("last_event_id")]
+        public long LastEventId64
+        {
+            get => _lastEventId.GetValueOrDefault();
+            set => _lastEventId = value;
         }
 
         /// <summary>Gets or sets the events list.</summary>
@@ -419,7 +431,8 @@ namespace zulip_cs_lib
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
             Dictionary<string, JsonElement> fields = serialized.Deserialize<Dictionary<string, JsonElement>>()!;
-            foreach (string field in new string[] { "last_event_id", "stream_id", "scheduled_message_id", "filter_id" })
+            if (!_lastEventId.HasValue) fields.Remove("last_event_id");
+            foreach (string field in new string[] { "stream_id", "scheduled_message_id", "filter_id" })
             {
                 if (!_assignedIntegers.ContainsKey(field)) fields.Remove(field);
             }
