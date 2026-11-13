@@ -267,7 +267,7 @@ namespace zulip_set_lib.tests
         public async Task Users_CreateGroup_Success()
         {
             HttpContent content = Utils.ContentForJsonString(
-                "{\"result\":\"success\",\"msg\":\"\"}");
+                "{\"result\":\"success\",\"msg\":\"\",\"group_id\":42}");
 
             bool success = Utils.TryGetMockedClient(
                 HttpStatusCode.OK, content,

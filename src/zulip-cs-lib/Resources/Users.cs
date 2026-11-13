@@ -537,7 +537,7 @@ namespace zulip_cs_lib.Resources
             return result.groups!;
         }
 
-        /// <summary>Creates a user group.</summary>
+        /// <summary>Creates a user group, validating its returned ID before projecting to the legacy result.</summary>
         /// <param name="name">The group name.</param>
         /// <param name="description">The group description.</param>
         /// <param name="members">The member user IDs.</param>
@@ -545,28 +545,274 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryCreateGroup(string name, string description, int[] members)
         {
+            (bool success, string? details, int groupId) = await TryCreateGroupWithId(name, description, members);
+            return (success, details);
+        }
+
+        /// <summary>Creates a user group and validates its required returned identity.</summary>
+        /// <param name="name">The group name.</param>
+        /// <param name="description">The group description; an empty description is allowed.</param>
+        /// <param name="members">Initial member user IDs; an empty array is allowed.</param>
+        /// <param name="options">Optional subgroups and governance settings.</param>
+        /// <remarks>Subgroups require feature level 311; all represented governance settings are supported by 324. Bot callers require 496.</remarks>
+        /// <returns>The Try outcome and created group ID.</returns>
+        public async Task<(bool success, string? details, int groupId)> TryCreateGroupWithId(
+            string name, string description, int[] members, GroupOptions? options = null)
+        {
+            if (string.IsNullOrWhiteSpace(name) || description == null ||
+                members == null || !GroupOptions.ValidIds(members))
+            {
+                return (false, "Users.CreateGroup failed: name, description and an array of positive member IDs are required.", 0);
+            }
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "name", name },
                 { "description", description },
                 { "members", JsonSerializer.Serialize(members) }
             };
+            string? inputError = options?.AddTo(data);
+            if (inputError != null) return (false, "Users.CreateGroup failed: " + inputError, 0);
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/user_groups/create", data);
-
-            if (ResponsePayload.IsSuccessful(response))
+            if (ResponsePayload.TryRead<int>(response, "Users.CreateGroup", "group_id", JsonValueKind.Number,
+                out int groupId, out string? details))
             {
-                return (true, null);
+                return (true, null, groupId);
             }
-
-            return (false, "Users.CreateGroup failed: " + response.GetFailureMessage());
+            return (false, details, 0);
         }
 
         /// <summary>Creates a user group (throwing version).</summary>
+        /// <param name="name">The group name.</param>
+        /// <param name="description">The group description.</param>
+        /// <param name="members">Initial member user IDs.</param>
         public async Task CreateGroup(string name, string description, int[] members)
         {
-            var result = await TryCreateGroup(name, description, members);
-            if (!result.success) throw new Exception(result.details);
+            await CreateGroupWithId(name, description, members);
+        }
+
+        /// <summary>Creates a user group and returns its ID, throwing on request or payload failure.</summary>
+        /// <param name="name">The group name.</param>
+        /// <param name="description">The group description.</param>
+        /// <param name="members">Initial member user IDs.</param>
+        /// <param name="options">Optional subgroups and governance settings.</param>
+        /// <returns>The created group ID.</returns>
+        public async Task<int> CreateGroupWithId(string name, string description, int[] members, GroupOptions? options = null)
+        {
+            (bool success, string? details, int groupId) = await TryCreateGroupWithId(name, description, members, options);
+            if (!success) throw new Exception(details);
+            return groupId;
+        }
+
+        /// <summary>Updates a group's name, description, governance settings or reactivates it.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="name">An optional new nonempty name.</param>
+        /// <param name="description">An optional description, including an empty string.</param>
+        /// <param name="options">Optional governance updates and reactivation.</param>
+        /// <remarks>Permission updates use new/old values without automatic retries. Optional name/description require feature level 165; represented governance settings require up to 324 and reactivation 386.</remarks>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryUpdateGroup(
+            int groupId, string? name = null, string? description = null, GroupUpdateOptions? options = null)
+        {
+            if (groupId <= 0 || (name != null && string.IsNullOrWhiteSpace(name)))
+            {
+                return (false, "Users.UpdateGroup failed: groupId must be positive and a supplied name must be nonempty.");
+            }
+            Dictionary<string, string> data = [];
+            if (name != null) data["name"] = name;
+            if (description != null) data["description"] = description;
+            string? inputError = options?.AddTo(data);
+            if (inputError != null) return (false, "Users.UpdateGroup failed: " + inputError);
+            if (data.Count == 0) return (false, "Users.UpdateGroup failed: at least one change is required.");
+
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Patch, $"api/v1/user_groups/{groupId}", data);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Users.UpdateGroup failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Updates a group, throwing on failure.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="name">An optional new name.</param>
+        /// <param name="description">An optional description.</param>
+        /// <param name="options">Optional governance updates and reactivation.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task UpdateGroup(int groupId, string? name = null, string? description = null, GroupUpdateOptions? options = null)
+        {
+            (bool success, string? details) = await TryUpdateGroup(groupId, name, description, options);
+            if (!success) throw new Exception(details);
+        }
+
+        /// <summary>Adds or removes direct group members and optionally subgroups in one request.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="add">Optional user IDs to add.</param>
+        /// <param name="delete">Optional user IDs to remove.</param>
+        /// <param name="addSubgroups">Optional subgroup IDs to add (feature level 311).</param>
+        /// <param name="deleteSubgroups">Optional subgroup IDs to remove (feature level 311).</param>
+        /// <remarks>Explicit empty arrays are retained; at least one array is required. Editing deactivated groups requires feature level 391.</remarks>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryUpdateGroupMembers(
+            int groupId, int[]? add = null, int[]? delete = null,
+            int[]? addSubgroups = null, int[]? deleteSubgroups = null)
+        {
+            Dictionary<string, string> data = [];
+            foreach ((string name, int[]? ids) in new (string, int[]?)[]
+            {
+                ("add", add), ("delete", delete),
+                ("add_subgroups", addSubgroups), ("delete_subgroups", deleteSubgroups)
+            })
+            {
+                if (ids == null) continue;
+                if (!GroupOptions.ValidIds(ids)) return (false, "Users.UpdateGroupMembers failed: " + name + " must contain positive integer IDs.");
+                data[name] = JsonSerializer.Serialize(ids);
+            }
+            if (groupId <= 0 || data.Count == 0)
+            {
+                return (false, "Users.UpdateGroupMembers failed: a positive groupId and at least one member or subgroup array are required.");
+            }
+
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"api/v1/user_groups/{groupId}/members", data);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Users.UpdateGroupMembers failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Adds or removes group members and optional subgroups, throwing on failure.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="add">Optional user IDs to add.</param>
+        /// <param name="delete">Optional user IDs to remove.</param>
+        /// <param name="addSubgroups">Optional subgroup IDs to add.</param>
+        /// <param name="deleteSubgroups">Optional subgroup IDs to remove.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task UpdateGroupMembers(int groupId, int[]? add = null, int[]? delete = null,
+            int[]? addSubgroups = null, int[]? deleteSubgroups = null)
+        {
+            (bool success, string? details) = await TryUpdateGroupMembers(groupId, add, delete, addSubgroups, deleteSubgroups);
+            if (!success) throw new Exception(details);
+        }
+
+        /// <summary>Checks whether a user belongs to a group, optionally excluding inherited membership.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="userId">The target user ID.</param>
+        /// <param name="directMemberOnly">Optional explicit direct-member filtering; null retains the server default.</param>
+        /// <remarks>Requires feature level 127; querying bot users requires 458 and bot callers require 496.</remarks>
+        /// <returns>The Try outcome and actual membership status, including false.</returns>
+        public async Task<(bool success, string? details, bool isMember)> TryGetGroupMembershipStatus(
+            int groupId, int userId, bool? directMemberOnly = null)
+        {
+            if (groupId <= 0 || userId <= 0)
+            {
+                return (false, "Users.GetGroupMembershipStatus failed: groupId and userId must be positive integers.", false);
+            }
+            Dictionary<string, string>? data = directMemberOnly.HasValue
+                ? new Dictionary<string, string> { { "direct_member_only", directMemberOnly.Value ? "true" : "false" } }
+                : null;
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"api/v1/user_groups/{groupId}/members/{userId}", data);
+            if (ResponsePayload.TryRead<JsonElement>(response, "Users.GetGroupMembershipStatus",
+                null, JsonValueKind.Object, out JsonElement payload, out string? details, root =>
+                    root.TryGetProperty("is_user_group_member", out JsonElement value) &&
+                    value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                        ? null : "required field 'is_user_group_member' must be Boolean."))
+            {
+                return (true, null, payload.GetProperty("is_user_group_member").GetBoolean());
+            }
+            return (false, details, false);
+        }
+
+        /// <summary>Checks group membership status, throwing on request or payload failure.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="userId">The target user ID.</param>
+        /// <param name="directMemberOnly">Optional explicit direct-member filtering.</param>
+        /// <returns>Whether the user belongs to the group.</returns>
+        public async Task<bool> GetGroupMembershipStatus(int groupId, int userId, bool? directMemberOnly = null)
+        {
+            (bool success, string? details, bool isMember) = await TryGetGroupMembershipStatus(groupId, userId, directMemberOnly);
+            if (!success) throw new Exception(details);
+            return isMember;
+        }
+
+        /// <summary>Lists direct or recursively included subgroups of a user group.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="directSubgroupOnly">Optional explicit direct-subgroup filtering; null retains the server default.</param>
+        /// <remarks>Requires feature level 127; bot callers require 496.</remarks>
+        /// <returns>The Try outcome and actual integer subgroup IDs, including an empty list.</returns>
+        public async Task<(bool success, string? details, List<int>? subgroups)> TryGetGroupSubgroups(
+            int groupId, bool? directSubgroupOnly = null)
+        {
+            if (groupId <= 0) return (false, "Users.GetGroupSubgroups failed: groupId must be positive.", null);
+            Dictionary<string, string>? data = directSubgroupOnly.HasValue
+                ? new Dictionary<string, string> { { "direct_subgroup_only", directSubgroupOnly.Value ? "true" : "false" } }
+                : null;
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"api/v1/user_groups/{groupId}/subgroups", data);
+            if (ResponsePayload.TryRead<List<int>>(response, "Users.GetGroupSubgroups", "subgroups", JsonValueKind.Array,
+                out List<int>? subgroups, out string? details))
+            {
+                return (true, null, subgroups);
+            }
+            return (false, details, null);
+        }
+
+        /// <summary>Lists subgroups, throwing on request or payload failure.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="directSubgroupOnly">Optional explicit direct-subgroup filtering.</param>
+        /// <returns>The integer subgroup IDs.</returns>
+        public async Task<List<int>> GetGroupSubgroups(int groupId, bool? directSubgroupOnly = null)
+        {
+            (bool success, string? details, List<int>? subgroups) = await TryGetGroupSubgroups(groupId, directSubgroupOnly);
+            if (!success) throw new Exception(details);
+            return subgroups!;
+        }
+
+        /// <summary>Adds or removes direct subgroups using the dedicated subgroup endpoint.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="add">Optional subgroup IDs to add.</param>
+        /// <param name="delete">Optional subgroup IDs to remove.</param>
+        /// <remarks>Requires feature level 127. Explicit empty arrays are retained. Editing deactivated groups requires 391.</remarks>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryUpdateGroupSubgroups(int groupId, int[]? add = null, int[]? delete = null)
+        {
+            if (groupId <= 0 || (add == null && delete == null) ||
+                (add != null && !GroupOptions.ValidIds(add)) || (delete != null && !GroupOptions.ValidIds(delete)))
+            {
+                return (false, "Users.UpdateGroupSubgroups failed: a positive groupId and at least one array of positive subgroup IDs are required.");
+            }
+            Dictionary<string, string> data = [];
+            if (add != null) data["add"] = JsonSerializer.Serialize(add);
+            if (delete != null) data["delete"] = JsonSerializer.Serialize(delete);
+
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"api/v1/user_groups/{groupId}/subgroups", data);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Users.UpdateGroupSubgroups failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Adds or removes direct subgroups, throwing on failure.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <param name="add">Optional subgroup IDs to add.</param>
+        /// <param name="delete">Optional subgroup IDs to remove.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task UpdateGroupSubgroups(int groupId, int[]? add = null, int[]? delete = null)
+        {
+            (bool success, string? details) = await TryUpdateGroupSubgroups(groupId, add, delete);
+            if (!success) throw new Exception(details);
+        }
+
+        /// <summary>Deactivates a group without deleting its audit history.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <remarks>Requires feature level 290. The server can reject deactivation when the group is still in use.</remarks>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryDeactivateGroup(int groupId)
+        {
+            if (groupId <= 0) return (false, "Users.DeactivateGroup failed: groupId must be positive.");
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"api/v1/user_groups/{groupId}/deactivate", null);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Users.DeactivateGroup failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Deactivates a group, throwing on failure.</summary>
+        /// <param name="groupId">The target group ID.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task DeactivateGroup(int groupId)
+        {
+            (bool success, string? details) = await TryDeactivateGroup(groupId);
+            if (!success) throw new Exception(details);
         }
 
         /// <summary>Gets group members.</summary>
