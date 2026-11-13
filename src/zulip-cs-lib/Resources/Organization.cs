@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using zulip_cs_lib.Models;
 
@@ -27,12 +28,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/realm/linkifiers", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<LinkifierObject>>(response, "Organization.GetLinkifiers", "linkifiers", JsonValueKind.Array,
+                out List<LinkifierObject>? linkifiers, out string? details,
+                linkifiers => ResponsePayload.ValidateElements(linkifiers, JsonValueKind.Object)))
             {
-                return (true, null, response.Linkifiers ?? new List<LinkifierObject>());
+                return (true, null, linkifiers);
             }
 
-            return (false, "Organization.GetLinkifiers failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets all linkifiers (throwing version).</summary>
@@ -58,12 +61,13 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/realm/filters", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<int>(response, "Organization.AddLinkifier", "id", JsonValueKind.Number,
+                out int filterId, out string? details))
             {
-                return (true, null, response.FilterId);
+                return (true, null, filterId);
             }
 
-            return (false, "Organization.AddLinkifier failed: " + response.GetFailureMessage(), 0);
+            return (false, details, 0);
         }
 
         /// <summary>Adds a linkifier (throwing version).</summary>
@@ -134,12 +138,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/realm/emoji", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<Dictionary<string, EmojiObject>>(response, "Organization.GetCustomEmoji", "emoji", JsonValueKind.Object,
+                out Dictionary<string, EmojiObject>? emoji, out string? details, ResponsePayload.ValidateObjectValues))
             {
-                return (true, null, response.Emoji ?? new Dictionary<string, EmojiObject>());
+                return (true, null, emoji);
             }
 
-            return (false, "Organization.GetCustomEmoji failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets all custom emoji (throwing version).</summary>
@@ -180,12 +185,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/realm/profile_fields", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<ProfileFieldObject>>(response, "Organization.GetProfileFields", "custom_fields", JsonValueKind.Array,
+                out List<ProfileFieldObject>? fields, out string? details,
+                fields => ResponsePayload.ValidateElements(fields, JsonValueKind.Object)))
             {
-                return (true, null, response.CustomFields ?? new List<ProfileFieldObject>());
+                return (true, null, fields);
             }
 
-            return (false, "Organization.GetProfileFields failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets custom profile fields (throwing version).</summary>

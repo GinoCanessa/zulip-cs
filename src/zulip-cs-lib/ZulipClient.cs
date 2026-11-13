@@ -71,6 +71,10 @@ namespace zulip_cs_lib
         /// <summary>The curl command.</summary>
         private string? _curlCommand;
 
+        /// <summary>Gets diagnostics and warnings for the most recently completed request, or null before any request completes.</summary>
+        /// <remarks>Concurrent callers must use detailed results for per-operation association; completion order is not invocation order.</remarks>
+        public ZulipResponse? LastResponse { get; private set; }
+
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
         /// <param name="site">      The Zulip site URL.</param>
         /// <param name="userEmail"> The user email address.</param>
@@ -440,6 +444,7 @@ namespace zulip_cs_lib
                     }
 
                     zulipResponse.Success = false;
+                    LastResponse = zulipResponse;
                     return zulipResponse;
                 }
 
@@ -449,13 +454,15 @@ namespace zulip_cs_lib
                     zulipResponse.CaughtException = "curl returned non-JSON data!";
                     zulipResponse.HttpResponseBody = body;
                     zulipResponse.Success = false;
+                    LastResponse = zulipResponse;
                     return zulipResponse;
                 }
 
                 try
                 {
                     zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
-                    zulipResponse.Success = true;
+                    zulipResponse.Success = zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
+                        string.IsNullOrEmpty(zulipResponse.CaughtException);
                 }
                 catch (Exception parseEx)
                 {
@@ -477,6 +484,7 @@ namespace zulip_cs_lib
                 zulipResponse.Success = false;
             }
 
+            LastResponse = zulipResponse;
             return zulipResponse;
         }
 
@@ -525,7 +533,9 @@ namespace zulip_cs_lib
                 {
                     zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
 
-                    zulipResponse.Success = true;
+                    zulipResponse.Success = response.IsSuccessStatusCode &&
+                        zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
+                        string.IsNullOrEmpty(zulipResponse.CaughtException);
                 }
                 catch (Exception parseEx)
                 {
@@ -547,6 +557,7 @@ namespace zulip_cs_lib
                 zulipResponse.Success = false;
             }
 
+            LastResponse = zulipResponse;
             return zulipResponse;
         }
     }

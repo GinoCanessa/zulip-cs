@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using zulip_cs_lib.Models;
@@ -9,8 +10,43 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib
 {
     /// <summary>Deserialization target for Zulip API call responses.</summary>
+    [JsonConverter(typeof(ZulipResponseConverter))]
     public class ZulipResponse
     {
+        /// <summary>The wire members value, which may contain users or integer group-member IDs.</summary>
+        private JsonElement? _membersPayload;
+
+        /// <summary>The caller-supplied user list.</summary>
+        private List<UserObject>? _members;
+
+        /// <summary>The wire presence value, including modern scalar timestamps.</summary>
+        private JsonElement? _presencePayload;
+
+        /// <summary>The caller-supplied legacy presence dictionary.</summary>
+        private Dictionary<string, PresenceInfo>? _presence;
+
+        /// <summary>The owned response snapshot.</summary>
+        private JsonElement _rawPayload;
+
+        /// <summary>Explicitly assigned nonnullable wire integers, distinguishing missing fields from valid zero values.</summary>
+        private readonly Dictionary<string, int> _assignedIntegers = [];
+
+        /// <summary>Gets the owned, original JSON response, unaffected by subsequent property changes.</summary>
+        [JsonIgnore]
+        public JsonElement RawPayload
+        {
+            get => _rawPayload;
+            internal set => _rawPayload = value.ValueKind == JsonValueKind.Undefined ? default : value.Clone();
+        }
+
+        /// <summary>Gets or sets unmodeled response fields.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+        /// <summary>Gets or sets nonfatal warnings about parameters unsupported by the server.</summary>
+        [JsonPropertyName("ignored_parameters_unsupported")]
+        public List<string>? IgnoredParametersUnsupported { get; set; }
+
         /// <summary>The zulip result success.</summary>
         public const string ZulipResultSuccess = "success";
 
@@ -69,9 +105,39 @@ namespace zulip_cs_lib
         [JsonPropertyName("messages")]
         public List<MessageObject>? Messages { get; set; }
 
-        /// <summary>Gets or sets the members list.</summary>
+        /// <summary>Gets or sets the users list. Integer group-member payloads are not user objects and return null.</summary>
+        [JsonIgnore]
+        public List<UserObject>? Members
+        {
+            get
+            {
+                if (_members == null && _membersPayload is JsonElement payload &&
+                    payload.ValueKind == JsonValueKind.Array &&
+                    payload.EnumerateArray().All(member => member.ValueKind == JsonValueKind.Object))
+                {
+                    _members = payload.Deserialize<List<UserObject>>();
+                }
+
+                return _members;
+            }
+            set
+            {
+                _members = value;
+                _membersPayload = null;
+            }
+        }
+
+        /// <summary>Gets or sets the collision-safe wire members value.</summary>
         [JsonPropertyName("members")]
-        public List<UserObject>? Members { get; set; }
+        internal JsonElement? MembersPayload
+        {
+            get => _members != null ? JsonSerializer.SerializeToElement(_members) : _membersPayload;
+            set
+            {
+                _membersPayload = value?.Clone();
+                _members = null;
+            }
+        }
 
         /// <summary>Gets or sets the streams list.</summary>
         [JsonPropertyName("streams")]
@@ -99,7 +165,11 @@ namespace zulip_cs_lib
 
         /// <summary>Gets or sets the last event ID.</summary>
         [JsonPropertyName("last_event_id")]
-        public int LastEventId { get; set; }
+        public int LastEventId
+        {
+            get => _assignedIntegers.GetValueOrDefault("last_event_id");
+            set => _assignedIntegers["last_event_id"] = value;
+        }
 
         /// <summary>Gets or sets the events list.</summary>
         [JsonPropertyName("events")]
@@ -115,7 +185,11 @@ namespace zulip_cs_lib
 
         /// <summary>Gets or sets the stream ID.</summary>
         [JsonPropertyName("stream_id")]
-        public int StreamId { get; set; }
+        public int StreamId
+        {
+            get => _assignedIntegers.GetValueOrDefault("stream_id");
+            set => _assignedIntegers["stream_id"] = value;
+        }
 
         /// <summary>Gets or sets the raw content.</summary>
         [JsonPropertyName("raw_content")]
@@ -163,7 +237,11 @@ namespace zulip_cs_lib
 
         /// <summary>Gets or sets the scheduled message ID.</summary>
         [JsonPropertyName("scheduled_message_id")]
-        public int ScheduledMessageId { get; set; }
+        public int ScheduledMessageId
+        {
+            get => _assignedIntegers.GetValueOrDefault("scheduled_message_id");
+            set => _assignedIntegers["scheduled_message_id"] = value;
+        }
 
         /// <summary>Gets or sets the drafts.</summary>
         [JsonPropertyName("drafts")]
@@ -217,26 +295,95 @@ namespace zulip_cs_lib
         [JsonPropertyName("status")]
         public UserStatusObject? Status { get; set; }
 
-        /// <summary>Gets or sets the presence data.</summary>
+        /// <summary>Gets or sets legacy presence data. Modern timestamps remain available in RawPayload and presence details.</summary>
+        [JsonIgnore]
+        public Dictionary<string, PresenceInfo>? Presence
+        {
+            get
+            {
+                if (_presence == null && _presencePayload is JsonElement payload &&
+                    payload.ValueKind == JsonValueKind.Object)
+                {
+                    Dictionary<string, PresenceInfo> legacy = [];
+                    foreach (JsonProperty property in payload.EnumerateObject())
+                    {
+                        if (property.Value.ValueKind == JsonValueKind.Object &&
+                            property.Value.TryGetProperty("status", out _) &&
+                            property.Value.TryGetProperty("timestamp", out _))
+                        {
+                            legacy.Add(property.Name, property.Value.Deserialize<PresenceInfo>()!);
+                        }
+                    }
+
+                    if (legacy.Count != 0 || !payload.EnumerateObject().Any())
+                    {
+                        _presence = legacy;
+                    }
+                }
+
+                return _presence;
+            }
+            set
+            {
+                _presence = value;
+                _presencePayload = null;
+            }
+        }
+
+        /// <summary>Gets or sets the collision-safe wire presence value.</summary>
         [JsonPropertyName("presence")]
-        public Dictionary<string, PresenceInfo>? Presence { get; set; }
+        internal JsonElement? PresencePayload
+        {
+            get => _presencePayload ?? (_presence != null ? JsonSerializer.SerializeToElement(_presence) : null);
+            set
+            {
+                _presencePayload = value?.Clone();
+                _presence = null;
+            }
+        }
 
         /// <summary>Gets or sets the presences data for realm presence.</summary>
         [JsonPropertyName("presences")]
         public Dictionary<string, Dictionary<string, PresenceInfo>>? Presences { get; set; }
 
-        /// <summary>Gets or sets the linkifier filter ID.</summary>
+        /// <summary>Gets or sets the legacy filter_id field. Current linkifier creation returns Id instead.</summary>
         [JsonPropertyName("filter_id")]
-        public int FilterId { get; set; }
+        public int FilterId
+        {
+            get => _assignedIntegers.GetValueOrDefault("filter_id");
+            set => _assignedIntegers["filter_id"] = value;
+        }
 
-        /// <summary>Gets or sets the invite link URL.</summary>
-        [JsonPropertyName("invite_link_url")]
+        /// <summary>Gets or sets the reusable invitation URL returned as invite_link.</summary>
+        [JsonPropertyName("invite_link")]
         public string? InviteLinkUrl { get; set; }
+
+        /// <summary>Builds a payload for injected, caller-created responses without inventing unassigned integer fields.</summary>
+        /// <returns>The explicit response fields with their actual assigned values.</returns>
+        internal JsonElement GetAssignedPayload()
+        {
+            JsonElement serialized = JsonSerializer.SerializeToElement(this, new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            });
+            Dictionary<string, JsonElement> fields = serialized.Deserialize<Dictionary<string, JsonElement>>()!;
+            foreach (string field in new string[] { "last_event_id", "stream_id", "scheduled_message_id", "filter_id" })
+            {
+                if (!_assignedIntegers.ContainsKey(field)) fields.Remove(field);
+            }
+
+            return JsonSerializer.SerializeToElement(fields);
+        }
 
         /// <summary>Builds error message.</summary>
         /// <returns>A string.</returns>
         public string GetFailureMessage()
         {
+            if (!string.IsNullOrEmpty(Result) && Result != ZulipResultSuccess)
+            {
+                return $"result: {Result}, code: {ErrorCode}, message: {Message}";
+            }
+
             if (!string.IsNullOrEmpty(CaughtException))
             {
                 return CaughtException;
