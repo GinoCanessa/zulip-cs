@@ -59,19 +59,21 @@ All Zulip API operations are accessed through resource properties on `ZulipClien
 
 | Property | Description |
 |---|---|
-| `Messages` | Send, edit, delete, fetch, render messages; emoji reactions; flags and explicit narrow-range read state. |
+| `Messages` | Send, edit, delete, fetch, render and report messages; emoji reactions; flags and explicit narrow-range read state. |
 | `Channels` | List, create, update, archive channels; manage subscriptions and topics. |
-| `Users` | Get, create, update, deactivate users; presence; status; alert words; user groups. |
+| `Users` | Users/groups, presence/status, personal settings/profile/avatar and explicit own/bot key lifecycle. |
+| `ChannelFolders` | Create, list, reorder, update, archive and unarchive channel folders. |
 | `Server` | Get server settings (version, feature level). |
 | `Events` | Register queues with initial state/capabilities, poll payload-bearing events, delete queues. |
 | `ScheduledMessages` | Create, edit, delete, and list scheduled messages. |
 | `Drafts` | Create, edit, delete, and list drafts. |
 | `Invitations` | Send invitations, create invitation links, resend, revoke. |
-| `Organization` | Linkifiers, custom emoji, custom profile fields. |
+| `Organization` | Linkifiers, emoji, profile fields, allowed domains, exports/consents and selected user-setting defaults. |
+| `BotStorage` | Documented bot-account key/value storage; not bot CRUD administration. |
 | `SavedSnippets` | Create, edit, delete, and list saved snippets. |
 | `Reminders` | Create with identity/optional note, delete, and list reminder targets/content/failure state. |
 | `NavigationViews` | Create, update, delete, and list fragment-identified views and pin state. |
-| `Files` | Stream file uploads and list/delete attachments, using either HTTP backend. |
+| `Files` | Stream uploads, list/delete attachments, obtain temporary URLs and check thumbnail readiness. |
 
 ### Throwing vs Try Pattern
 
@@ -243,6 +245,35 @@ Groups support initial subgroups/governance through `GroupOptions`, subsequent u
 
 Presence publication uses the incremental protocol (FL263), always sends `last_update_id` and never infers active/idle from timestamps. Preserve and reuse its revision; `pingOnly: true` returns no presence data or server clock. `GetRealmPresence` returns the realm endpoint's legacy email-keyed data. Alert-word removal returns the remaining words, and `SetMessageEditTyping` uses the current message-specific path (FL361).
 
+**Personal preferences and channel folders:**
+
+```csharp
+await client.Users.UpdateSettings(new UserSettingsOptions
+{
+    TwentyFourHourTime = true,
+    EnableDesktopNotifications = false
+});
+await client.Users.UpdateProfileData([new ProfileDataInput(4, "Engineering")]);
+await client.Users.RemoveProfileData([5]);
+List<int> subscribedChannelIds = await client.Channels.GetUserChannels(7);
+
+int folderId = await client.ChannelFolders.Create("Projects", description: "");
+await client.ChannelFolders.Update(folderId, isArchived: true);
+await client.ChannelFolders.Update(folderId, isArchived: false);
+```
+
+`UserSettingsOptions` covers selected notification/display/timezone/language preferences: null omits a value, while false and empty strings are sent explicitly. Profile values are string, null (removal), or integer user-ID arrays, not arbitrary JSON. `UploadAvatar` and `DeleteAvatar` return the required `avatar_url`; image uploads retain caller stream ownership and share `UploadTimeout`. Image restrictions remain server-enforced.
+
+User-channel lookup (FL440; bot targets FL458) returns permission-limited `subscribed_channel_ids`, not complete channel objects. Folder lifecycle requires FL389 and administrator permission; creation requires a description, which may be empty. `ChannelFolders.GetAll(includeArchived: true)` includes archived folders, `Update` changes name/description/archive state, and `Reorder` (FL414) must include every folder ID, including archived ones.
+
+**Selective organization administration and bot storage:**
+
+`Organization` provides profile-field update/delete/order, linkifier order, emoji upload, allowed-domain lifecycle, exports/consents and selected future-member defaults. Domain mutations require an organization owner from FL143; other administration requires its documented administrator/owner role. `RealmUserSettingsDefaultsOptions` changes only future new members' notification/display defaults, not current users. Emoji uses the same bounded multipart mechanism, with server-configured permissions and size limits.
+
+`CreateExport` returns the queued export ID, not a completed download. `GetExports` exposes pending/failed/deleted state and nullable URLs; polling/download remains caller-owned. Explicit export-type choices require FL449; `FullWithoutConsent` additionally requires server-enabled `owner_full_content_access`. These exports can contain sensitive organization data.
+
+`BotStorage.Get(keys?)`, `Update(storage)` and `Delete(keys)` support the documented **string-to-string** store. Null GET keys retrieves all data; deletion always takes an explicit key list, and an empty list does not imply deleting everything. FL494 restricts these APIs to bot accounts. Arbitrary JSON must be encoded into a string by the caller if desired; this is not bot CRUD administration.
+
 **Upload and manage attachments:**
 
 ```csharp
@@ -259,6 +290,8 @@ Uploads consume the remaining stream bytes through HttpClient or binary curl std
 
 Upload `url` is required (FL272); returned `filename` is optional (FL285). Attachment reads use current seconds-based timestamps (FL443) and `message_ids` (FL472), not the historical embedded-message shape. Upload success does not mean the attachment has been referenced by a message; malformed mutation results do not imply rollback.
 
+`Files.GetTemporaryUrl(pathId)` accepts a complete logical attachment `path_id` such as `1/ab/token/report.pdf`, not an upload URL, and returns an unauthenticated link. Use it immediately and **do not persist it**; the server-configured lifetime is generally 60 seconds. `Files.CheckThumbnailStatus(pathId)` (FL479) checks once: `false` means not ready, not a request failure. The caller owns polling. Reserved filename characters are encoded per path segment.
+
 Curl uploads require working nonblocking stdin support (`--upload-file .`), verified here with Windows curl 8.22.0; older Windows curl builds lack that capability. Nonblocking input lets curl handle early HTTP rejection while the source awaits data. The client then cancels cooperative reads without losing received diagnostics; interrupted uploads never become success merely because the server returned 2xx. Ordinary curl requests retain their existing behavior.
 
 **Fetch an API key from username/password:**
@@ -267,6 +300,23 @@ Curl uploads require working nonblocking stdin support (`--upload-file .`), veri
 (bool success, string details, string apiKey, string email) =
     await ZulipClient.TryFetchApiKey("https://zulip.example.com", "user@example.com", "password");
 ```
+
+**JWT bootstrap and explicit API-key rotation:**
+
+```csharp
+ApiKeyResult credentials = await ZulipClient.FetchApiKeyJwt(
+    "https://zulip.example.com", jwtToken, includeProfile: true);
+var authenticated = new ZulipClient(
+    "https://zulip.example.com", credentials.Email, credentials.ApiKey);
+
+string newKey = await authenticated.Users.RegenerateOwnApiKey();
+var replacement = new ZulipClient(
+    "https://zulip.example.com", credentials.Email, newKey);
+```
+
+JWT bootstrap requires an organization with JWT enabled (FL160); an injected bootstrap `HttpClient` must not have a default `Authorization` header. Profiles are required only when requested. Own regeneration invalidates the old key/mobile registrations but **does not update the existing client's credentials**. Even a malformed rotation response is not rollback; recover credentials through the server's account controls rather than blindly retrying. `GetBotApiKey` (FL463) and `RegenerateBotApiKey` require the bot owner or an organization administrator. Treat keys, JWTs, credential results and their raw `Response`/`LastResponse` as secrets; never log them.
+
+`Messages.Report(messageId, reportType, description?)` requires the organization's moderation-request channel (FL382). Use a type advertised in registration state (FL435), not an assumed fixed list. `"other"` requires a nonempty description; descriptions are limited to 1000 Unicode code points. At FL511 the server reports failed delivery instead of silently accepting it. No report is retried automatically.
 
 ### Narrow Builder
 
@@ -311,14 +361,26 @@ This increment uses the published `chat.fhir.org` contracts through **feature le
 | Message-edit typing on the current path | FL361 |
 | Upload URL / optional filename | FL272 / FL285 |
 | Current attachment listing shape | FL472, with seconds-based timestamps from FL443 |
+| Temporary file URL / thumbnail readiness | FL1 / FL479 |
+| JWT bootstrap / bot-key retrieval | FL160 / FL463; JWT configuration or owner/admin permission required |
+| Message reporting | FL382; dynamic report types FL435; delivery errors FL511 |
+| Personal settings / enter-to-send | FL80 / FL81 |
+| User-channel lookup | FL440; bot targets FL458 |
+| Channel-folder lifecycle / ordering | FL389 / FL414 |
+| Avatar deletion idempotence | FL443 |
+| Profile-field partial update / linkifier ordering | FL252 / FL202; other field options keep their individual requirements |
+| Allowed-domain creation shape / owner-only mutations | FL63 / FL143 |
+| Export creation ID / explicit type choices | FL182 / FL449; consent listing FL295, visibility metadata FL430 |
+| Selected realm defaults / 24-hour-time default | FL96 / FL99 |
+| Bot storage account restriction | Bot accounts only from FL494 |
 | Group extensions | Initial/combined subgroups FL311; deactivation FL290; reactivation FL386; bot callers FL496 where permitted |
 | URL-embed rendering | FL513 |
 
-The library does not make hidden capability-discovery calls or silently retry unsupported requests. Gate newer methods/options using explicit server settings, and inspect standard errors/warnings. Video/mobile/bouncer, broad settings/authentication administration, channel folders and exhaustive send/fetch option parity remain outside this increment.
+The library does not make hidden capability-discovery calls or silently retry unsupported requests. Gate newer methods/options using explicit server settings, and inspect standard errors/warnings. Video/mobile/bouncer, undocumented bot CRUD/broader realm settings, exhaustive settings and send/fetch option parity remain outside this increment.
 
 ## Architecture
 
-`ZulipClient` authenticates via Basic auth (email + API key) and delegates HTTP execution to either `HttpClient` or a `curl` subprocess. API resource classes (e.g., `Messages`, `Channels`) receive a request delegate from `ZulipClient` rather than making HTTP calls directly, enabling the dual-backend design and straightforward testing via mocked `HttpMessageHandler`. `Files` also receives a focused stream-upload delegate; ordinary endpoints keep their existing form/query transport.
+`ZulipClient` authenticates via Basic auth (email + API key) and delegates HTTP execution to either `HttpClient` or a `curl` subprocess. API resource classes (e.g., `Messages`, `Channels`) receive a request delegate from `ZulipClient` rather than making HTTP calls directly, enabling the dual-backend design and straightforward testing via mocked `HttpMessageHandler`. File/avatar/emoji uploads share a focused stream-upload delegate and bounded lifetime; ordinary endpoints keep their existing form/query transport. JWT bootstrap is a static HTTP helper and does not require an authenticated client.
 
 # CLI
 

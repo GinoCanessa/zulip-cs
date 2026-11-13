@@ -19,6 +19,11 @@ Primary functional areas:
 - One-shot narrow flag updates with explicit progress/cursors (FL155), URL-embed rendering (FL513), incremental presence publication (FL263), realm presence, alert-word removal and message-edit typing (FL361).
 - Explicit channel creation, modern personal topic policies, subscription status/settings and group identity/governance/membership/subgroup/deactivation workflows.
 - Streaming file uploads through both backends, caller-owned streams, bounded cancellation/timeout and attachment list/delete with current message references.
+- Temporary file URLs and one-shot thumbnail readiness; shared bounded multipart routing for avatar/emoji uploads.
+- User-channel lookup and channel-folder creation/list/order/update/archive/unarchive.
+- Selected typed personal settings, profile data and avatar lifecycle; selected organization defaults.
+- Moderation reports and explicit own/bot key lifecycle, with JWT bootstrap on configured servers.
+- Profile-field lifecycle/order, linkifier order, emoji upload, allowed domains, exports/consents and documented bot-account storage.
 
 ## CLI (`zulip-cs-cli`)
 
@@ -52,7 +57,8 @@ dotnet test ..\zulip-cs.sln --no-restore
 - Batch continuation, event state management and HTTP timeout/retry policy remain caller-owned. Unknown legacy completion is not proof of completion.
 - Navigation numeric/name-only signatures are obsolete no-request failures. Channel sending has one destination; CLI `--streams` is a literal name rather than CSV.
 - Optional metadata/options must be gated by actual server capabilities. No development-clone feature level is asserted as deployed, and no new minimum-server policy is imposed.
-- The 2026-11-13 common-workflow update targets documented contracts through live FL513; it does not promise all absent endpoints, every send/fetch option, folders, broad settings/authentication, or specialized video/mobile/bouncer capabilities. Live verification is unauthenticated metadata/documentation only.
+- The 2026-11-13 prioritized update targets documented contracts through live FL513; it does not promise all absent endpoints, exhaustive settings/send/fetch options, undocumented bot CRUD/broader realm settings or specialized video/mobile/bouncer capabilities. Live verification is unauthenticated metadata/documentation only.
+- Temporary URLs must be used immediately and never persisted. Thumbnail polling remains caller-owned. Key regeneration returns explicit credentials but never updates an existing client; credential raw responses are sensitive and must not be logged.
 
 ---
 Updated on: 2026-11-13

@@ -33,6 +33,7 @@ Unit tests for client/resource functionality and parser behavior.
 - Retains `LastResponse`, the most recently completed response, including warnings/owned raw JSON. Use detailed results for per-request association under concurrency.
 - Exposes static API key bootstrap helper:
   - `TryFetchApiKey(site, username, password, HttpClient?)`.
+  - `FetchApiKeyJwt` / `TryFetchApiKeyJwt` (FL160): form-body JWT, optional profile and cancellation; requires JWT configured and no default Authorization on an injected client. `ApiKeyResult` retains explicit credentials/profile and sensitive request-local response.
 
 ## Resource Class Coverage
 
@@ -49,6 +50,7 @@ Capabilities:
 - History and receipts: `GetEditHistory`, `GetReadReceipts` (+ `Try*`).
 - `MarkAllAsReadBatch` / `TryMarkAllAsReadBatch`: one caller-controlled batch with complete/partial/unknown state and its response. Convenience `MarkAllAsRead` rejects known partial completion.
 - `UpdateFlagsForNarrow` / `TryUpdateFlagsForNarrow` (FL155): one range with counts, nullable cursors, boundary booleans, ignored-channel diagnostics and its own response. Caller owns continuation; this replaces legacy mark-all/channel/topic-read APIs without removing them.
+- `Report` / `TryReport` (FL382): server-advertised type (FL435), optional context up to 1000 Unicode code points; `"other"` requires nonempty context. Moderation channel must be configured; FL511 delivery errors remain failures.
 
 Exposed enums:
 
@@ -70,6 +72,14 @@ Capabilities:
 - `GetSubscriptionStatus(userId, streamId)` / Try (FL12; bot targets at FL458), `UpdateSubscriptionSettings(changes)` / Try, `UpdateSubscriptionProperty(change)` / Try.
 - Personal topic policies support None/Muted/Unmuted/Followed. Prefer the `/user_topics` workflow (FL170, Followed at FL219) over retained legacy topic muting; empty topics require FL334.
 - `UpdateTopicVisibility(streamId, topic, TopicVisibilityPolicy)` / Try is the typed modern policy API.
+- `GetUserChannels(userId)` / Try (FL440; bot targets FL458) returns actual integer `subscribed_channel_ids`, limited by metadata permissions.
+
+### ChannelFolders
+
+- `Create(name, description)` / Try (FL389) returns `channel_folder_id`. Description is required, though empty is valid.
+- `GetAll(includeArchived?)` / Try returns `channel_folders`; list objects use `id`, not the creation-result key. Creator/time are nullable, and ordering metadata is optional for older servers.
+- `Update(channelFolderId, name?, description?, isArchived?)` / Try edits or archives/unarchives. Null values leave settings unchanged.
+- `Reorder(order)` / Try (FL414) sends the complete order, including archived folder IDs. Folder mutations require administrators; no delete endpoint is invented.
 
 ### Users
 
@@ -85,7 +95,11 @@ Capabilities:
 - `SetMessageEditTyping(messageId, isTyping)` / Try publishes start/stop using `/messages/{message_id}/typing` (FL361).
 - Group administration includes identity-returning creation, update, membership update/status, subgroup listing/update and deactivation. Creation uses `group_id`; governance options reuse `GroupSettingValue` and the documented replacement `new`/optional `old` shape.
 - Group pairs: `CreateGroupWithId`, `UpdateGroup`, `UpdateGroupMembers`, `GetGroupMembershipStatus`, `GetGroupSubgroups`, `UpdateGroupSubgroups`, `DeactivateGroup`. Original group creation signatures project validated identities.
+- Credential pairs: `RegenerateOwnApiKey`, `GetBotApiKey` (FL463), `RegenerateBotApiKey`. Own regeneration returns a new key but leaves this client's authentication unchanged; construct a new client. Bot calls require owner/admin permission. Malformed results do not undo rotation. Do not log credential responses or LastResponse.
 - `GroupOptions` supports initial subgroups (FL311) and explicit governance. `GroupUpdateOptions` supports replacement `GroupSettingUpdate` values and reactivation (FL386). Combined subgroup/member updates require FL311; subgroup/member-status endpoints FL127; deactivation FL290. Bot callers require FL496 on the documented group endpoints that permit them.
+- `UpdateSettings(UserSettingsOptions)` / Try (FL80; EnterSends FL81) supports timezone/language, 24-hour time, enter-to-send and selected desktop/email/push/digest preferences. Nullable options distinguish omission from false/empty; password/identity changes are excluded.
+- `UpdateProfileData(ProfileDataInput[])` / Try sends JSON object-array `data`; values are strings, null or user-ID integer arrays. `RemoveProfileData(fieldIds)` / Try sends an integer-array `data` on DELETE. Empty arrays are valid; null values remove a field.
+- `UploadAvatar(stream, filename, contentType?, cancellationToken)` / Try posts multipart field `file`, returning required `avatar_url`. `DeleteAvatar` / Try returns the restored `avatar_url`; deletion is idempotent from FL443. Shared UploadTimeout/stream ownership applies, and restrictions are server-enforced.
 
 ### Server
 
@@ -117,6 +131,19 @@ Capabilities:
 - Emoji: `GetCustomEmoji`, `DeactivateCustomEmoji`.
 - Profile fields: `GetProfileFields`, `CreateProfileField`.
 - `CreateProfileFieldWithId` / Try returns actual `id` and accepts `ProfileFieldOptions`: structured `FieldData`, summary display (FL146), required (FL244), user-editable (FL296), matching (FL455). Requires an organization administrator.
+- `UpdateProfileField(fieldId, name?, hint?, ProfileFieldOptions?)` / Try supports partial updates (FL252); `DeleteProfileField` and `ReorderProfileFields(order)` / Try complete lifecycle/order. Include all fields in reorder; paragraph-summary support requires FL476.
+- `ReorderLinkifiers(orderedLinkifierIds)` / Try (FL202) sends the full JSON ID order.
+- `UploadCustomEmoji(emojiName, stream, filename, contentType?, cancellationToken)` / Try posts multipart field `filename` at an encoded logical-name path. Success requires only the envelope, not an invented uploaded-file URL. Permissions/size are server-configured; shared bounded upload/ownership applies.
+- `GetAllowedDomains`, `AddAllowedDomain(domain, allowSubdomains)`, `UpdateAllowedDomain`, `DeleteAllowedDomain` / Try use current domain strings (creation shape FL63; owner-only mutations FL143). Creation returns the real `new_domain: [id, domain]` via `OrganizationAllowedDomainCreationResult`.
+- `GetExports`, `CreateExport(OrganizationExportType?)`, `DeleteExport`, `GetExportConsents` / Try expose queued IDs (FL182), current pending/failed/deleted export metadata and consent state (FL295; visibility metadata FL430). Explicit Public/FullWithConsent/FullWithoutConsent types and current string metadata require FL449. FullWithoutConsent also requires server-enabled owner_full_content_access. Prior-server metadata is optional; no download/poll/retry is automatic.
+- `UpdateUserSettingsDefaults(RealmUserSettingsDefaultsOptions)` / Try (FL96; 24-hour-time FL99) changes selected notification/display defaults for future new members only. Its dedicated nullable options exclude timezone/language/profile/identity.
+
+### BotStorage
+
+- `Get(keys?)` / Try uses an optional JSON `keys` query and requires a string-valued `storage` object. Null retrieves all storage, and actual empty objects are valid.
+- `Update(IReadOnlyDictionary<string,string>)` / Try sends JSON object-form `storage`; values must be strings, not arbitrary JSON or null.
+- `Delete(keys)` / Try always sends an explicit JSON key array. Null fails; an empty list is a valid explicit no-op, never an implicit delete-all.
+- Bot-account-only from FL494; account restrictions are server-enforced. No undocumented bot CRUD or implicit storage migration is introduced.
 
 ### SavedSnippets
 
@@ -139,6 +166,8 @@ Capabilities:
 - `Upload` / `TryUpload` accepts a readable caller-owned stream, filename, optional content type and cancellation token; returns `FileUploadResult` with required server-relative URL (FL272), optional filename (FL285) and request-local diagnostics.
 - `GetAll` / `TryGetAll` returns `AttachmentListResult` with current attachment metadata, space usage and diagnostics. Current `message_ids` shape requires FL472; timestamps are in seconds (FL443).
 - `Delete` / `TryDelete` removes an attachment by ID.
+- `GetTemporaryUrl(pathId)` / Try (FL1) returns an immediately usable unauthenticated URL, generally valid for 60 seconds; never persist it. Input is a complete logical path_id, not a URL.
+- `CheckThumbnailStatus(pathId)` / Try (FL479) checks once; false is valid not-ready state. The caller owns polling. Logical path segments are encoded without treating reserved filename characters as URL syntax.
 - Multipart uses the focused upload delegate, not ordinary scalar/JSON form encoding. HttpClient and curl consume the same streaming multipart bytes, including nonseekable streams, quoted/Unicode filenames and binary data. Input streams are never disposed by the client; positions are not restored and canceled reads can leave them indeterminate.
 - `ZulipClient.UploadTimeout` defaults to 100 seconds; valid values are positive and at most 2,147,483,646 milliseconds. Cancellation/timeout and HTTP/subprocess/parse errors remain explicit; curl cleanup can add five seconds. An injected HttpClient may impose its own shorter timeout; cancellation-ignoring caller streams may outlive cleanup. No temporary payload files or automatic upload retries/resumption.
 - Curl uploads require functional nonblocking stdin (`--upload-file .`); verified with Windows curl 8.22.0. On early process exit, cooperative source reads are canceled and actual status/body are retained independently of the writer; interrupted 2xx uploads remain explicit failures.
