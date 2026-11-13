@@ -2,19 +2,19 @@
 
 ## Build & Test
 
-All commands run from the `src/` directory (where `zulip-cs.sln` lives).
+All commands run from the repository root (where `zulip-cs.sln` lives).
 
 ```bash
 # Restore, build, and test
-dotnet restore
-dotnet build
-dotnet test
+dotnet restore zulip-cs.sln
+dotnet build zulip-cs.sln
+dotnet test zulip-cs.sln
 
 # Run a single test by fully-qualified name
-dotnet test --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Message_SendPrivate_EmailSingle"
+dotnet test zulip-cs.sln --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Message_SendPrivate_EmailSingle"
 
 # Run all tests in a single class
-dotnet test --filter "FullyQualifiedName~zulip_set_lib.tests.IniParserTests"
+dotnet test zulip-cs.sln --filter "FullyQualifiedName~zulip_set_lib.tests.IniParserTests"
 ```
 
 ## Architecture
@@ -23,7 +23,7 @@ The solution has three projects:
 
 - **zulip-cs-lib** — Core library wrapping the Zulip REST API. `ZulipClient` is the entry point; it authenticates via Basic auth (email + API key) and delegates HTTP execution to either `HttpClient` or a `curl` subprocess. API resource classes (e.g., `Messages`) live under `Resources/` and receive a request delegate from `ZulipClient` rather than making HTTP calls directly.
 - **zulip-cs-lib.tests** — xUnit tests using Moq to mock `HttpMessageHandler`. Shared test utilities are in `Utils.cs`.
-- **zulip-cs-cli** — Console app using `System.CommandLine.DragonFruit` for argument parsing. Reads credentials from a `zuliprc` INI file (searched upward from the executable directory).
+- **zulip-cs-cli** — Console app using `System.CommandLine` 2.x command/option builders for argument parsing. Reads credentials from a `zuliprc` INI file (searched upward from the executable directory, including the filesystem root).
 
 ## Conventions
 

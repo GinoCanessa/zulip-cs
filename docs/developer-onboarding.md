@@ -24,21 +24,21 @@ Top-level:
 Run all operations from the repository root (where `zulip-cs.sln` lives):
 
 ```bash
-dotnet restore
-dotnet build
-dotnet test
+dotnet restore zulip-cs.sln
+dotnet build zulip-cs.sln
+dotnet test zulip-cs.sln
 ```
 
 Run one test class:
 
 ```bash
-dotnet test --filter "FullyQualifiedName~zulip_set_lib.tests.MessageTests"
+dotnet test zulip-cs.sln --filter "FullyQualifiedName~zulip_set_lib.tests.MessageTests"
 ```
 
 Run one test by full name:
 
 ```bash
-dotnet test --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Message_SendPrivate_EmailSingle"
+dotnet test zulip-cs.sln --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Message_SendPrivate_EmailSingle"
 ```
 
 ## 4. Configuration Model (`zuliprc`)
@@ -59,6 +59,9 @@ CLI lookup behavior:
 - Uses `--zuliprc` if provided.
 - Otherwise searches upward from the executable directory for `zuliprc`.
 - At each parent level also checks `secrets/zuliprc`.
+- Both candidates are checked at the filesystem root before exhaustion.
+
+The INI parser accepts `=` and `:` separators, choosing the first separator and preserving later separators in the value. For example, `key: abc=def` retains `abc=def`.
 
 ## 5. Development Workflow
 
@@ -77,6 +80,7 @@ CLI lookup behavior:
 - Public APIs are async and return `Task`-based results.
 - Resource classes do not own HTTP clients directly; they receive a request delegate from `ZulipClient`.
 - API/transport failures in `Try*` methods should surface as tuple failure details, not exceptions.
+- Ordinary HTTP timeout/cancellation failures refresh `LastResponse` and follow this Try contract. Ordinary request/response objects are disposed after materialization; injected clients remain caller-owned.
 
 ## 7. Suggested First Tasks for New Contributors
 

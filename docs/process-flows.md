@@ -55,7 +55,7 @@ flowchart TD
 
 Recommended practice: always call `DeleteQueue` on shutdown to clean up server-side queue resources.
 
-Use `Events.Register(RegistrationOptions?)` when initial state, capabilities, timeout metadata or request-local diagnostics are needed; `RegisterQueue` remains the queue/cursor projection. Apply the fetched initial state, process events, and only then advance the acknowledged cursor. Common event fields are typed by event kind, while unknown payload fields remain owned JSON. The library does not maintain state or automate retries/continuation.
+Use `Events.Register(RegistrationOptions?)` when initial state, capabilities, timeout metadata or request-local diagnostics are needed. Poll using `registration.LastEventId64`, then pass processed `EventObject.Id` values directly to the long overload. `RegisterQueue` remains the legacy int queue/cursor projection; overflow produces explicit failure with an allocated queue ID that must be cleaned up when unused. Apply the fetched initial state, process events, and only then advance the acknowledged cursor. Common event fields are typed by event kind, while unknown payload fields remain owned JSON. The library does not maintain state or automate retries/continuation.
 
 ## 5. Configuration Discovery Flow (`FindZulipRC`)
 
@@ -63,7 +63,7 @@ Use `Events.Register(RegistrationOptions?)` when initial state, capabilities, ti
 2. Check `zuliprc` in current directory.
 3. Check `secrets/zuliprc` in current directory.
 4. Move to parent directory and repeat.
-5. Stop at root and throw if no config found.
+5. Check both candidates at the root, then throw if no config was found.
 
 ## 6. Transport Selection Flow
 
@@ -73,6 +73,8 @@ Use `Events.Register(RegistrationOptions?)` when initial state, capabilities, ti
 - `DoZulipRequestCurl` when using curl backend.
 
 Both return `ZulipResponse`, so resource behavior remains consistent independent of transport.
+
+Ordinary HTTP timeout/cancellation becomes a failed response with fresh diagnostics. Both production backends retain HTTP status/body and reject failed HTTP statuses independently of JSON success; request-local HTTP objects are disposed after materialization.
 
 ---
 Generated on: 2026-04-07  

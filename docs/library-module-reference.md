@@ -31,6 +31,8 @@ Unit tests for client/resource functionality and parser behavior.
   - `curl` subprocess
 - Initializes resource instances with a shared request delegate.
 - Retains `LastResponse`, the most recently completed response, including warnings/owned raw JSON. Use detailed results for per-request association under concurrency.
+- Ordinary HTTP timeout/cancellation failures return explicit Try diagnostics. Ordinary HTTP request/response content is disposed after materialization without disposing the reusable/injected client.
+- Both production backends retain actual HTTP status/body; HTTP failure overrides success-shaped JSON. Status zero remains accepted for caller-created request delegates, not as a successful production curl result.
 - Exposes static API key bootstrap helper:
   - `TryFetchApiKey(site, username, password, HttpClient?)`.
   - `FetchApiKeyJwt` / `TryFetchApiKeyJwt` (FL160): form-body JWT, optional profile and cancellation; requires JWT configured and no default Authorization on an injected client. `ApiKeyResult` retains explicit credentials/profile and sensitive request-local response.
@@ -45,6 +47,7 @@ Capabilities:
 - Reactions: `AddEmoji`/`TryAddEmoji`, `RemoveEmoji`/`TryRemoveEmoji`.
 - Sending: private recipients retain existing email/ID forms; channel sends require exactly one JSON string name or scalar ID.
 - Retrieval: `Get`, `GetSingle` (+ `Try*` forms).
+- `Get` can reuse an unobserved default-options wire message list after raw validation. Returned mutable messages remain independent of typed diagnostics; observed/custom-options envelopes retain authoritative raw deserialization.
 - Rendering: `Render`/`TryRender`; separate `(content, populateUrlEmbedData)` overloads request asynchronous URL embeds at FL513 without changing the old wire request.
 - State and flags: `UpdateFlags`, `MarkAllAsRead`, `MarkStreamAsRead`, `MarkTopicAsRead` (+ `Try*`).
 - History and receipts: `GetEditHistory`, `GetReadReceipts` (+ `Try*`).
@@ -86,6 +89,7 @@ Capabilities:
 Capabilities:
 
 - Identity: `GetOwnUser`, `GetUser`, `GetUserByEmail`, `GetAll`.
+- Email lookup and presence identities are encoded as logical path segments, including reserved characters and Unicode.
 - Presence/status: `GetPresenceDetails` (`PresenceResult` with modern timestamps/server clock/response), legacy `GetPresence`, `GetStatus`, `UpdateOwnStatus`, `SetTypingStatus`.
 - Admin operations: `Create`, `Update`, `Deactivate`, `Reactivate`.
 - Preferences: `MuteUser`, `UnmuteUser`, `GetAlertWords`, `AddAlertWords`, `RemoveAlertWords` (returns remaining words).
@@ -109,6 +113,8 @@ Capabilities:
 
 - Queue lifecycle: `RegisterQueue`, `GetEvents`, `DeleteQueue` (+ `Try*`).
 - Detailed `Register(RegistrationOptions?)` / `TryRegister` retain queue/cursor, typed initial users/channels/presences, feature/timeout/capability metadata and complete owned `RawInitialState`.
+- `RegistrationResult.LastEventId64` and `ZulipResponse.LastEventId64` retain Int64 cursors; `GetEvents`/`TryGetEvents` accept them directly through additive long overloads. Existing int overloads/properties remain available; legacy int getters throw `OverflowException` outside their range.
+- `TryRegisterQueue` retains its int tuple and returns explicit overflow failure with the allocated queue ID and cleanup guidance; detailed `Register` is the lossless alternative. Delete the returned unused queue after such a legacy failure. Registration JSON preserves the cursor name `LastEventId`; response wire JSON remains `last_event_id`.
 - Options include independent event/fetch filters, capabilities, subscriber inclusion, slim presence and queue inactivity timeout. Initial fields depend on fetch filters; message bodies are fetched separately. HTTP timeout/state-store/retry policy remains caller-owned.
 - Common event payloads are typed by kind; other fields, including reused names on unknown future kinds, survive in owned extension data.
 

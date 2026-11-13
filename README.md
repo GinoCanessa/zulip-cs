@@ -98,6 +98,8 @@ Required response fields and essential identities are validated: missing/null/ma
 
 `LastResponse` is the **most recently completed** request, not a per-call association under concurrency. Detailed presence, registration, batch and narrow-flag results carry their own `Response`; prefer these for request-local diagnostics. Do not retry an applied mutation just because a compatibility warning was returned. A malformed result after a mutation is also not proof of rollback; inspect the response before deciding to retry.
 
+Ordinary HTTP timeout/cancellation failures return explicit Try details and refresh `LastResponse`. Production HttpClient and curl responses retain actual HTTP status/body, with HTTP failure taking precedence over success-shaped JSON. Request-local HTTP objects are disposed after materialization; injected clients remain caller-owned. Message results and typed diagnostics do not share mutable lists or objects, including when an unobserved wire list is reused to avoid redundant deserialization.
+
 ### Examples
 
 **Send a direct message:**
@@ -157,7 +159,7 @@ RegistrationResult registration = await client.Events.Register(new RegistrationO
 });
 try
 {
-    List<EventObject> events = await client.Events.GetEvents(registration.QueueId, registration.LastEventId);
+    List<EventObject> events = await client.Events.GetEvents(registration.QueueId, registration.LastEventId64);
     // Apply initial state/events before advancing the polling cursor.
 }
 finally
@@ -166,7 +168,9 @@ finally
 }
 ```
 
-`RawInitialState` owns the complete registration response. Typed initial fields depend on fetch filters; registration does not fetch message bodies. Timeout/capability metadata is retained, but the library does not configure HTTP timeouts, maintain a state store or retry polling automatically. Common message/update/delete/flag events expose typed fields; unmodeled fields and unknown event kinds are retained in `EventObject.ExtensionData`, even when they reuse a typed field name. `RegisterQueue` remains a queue/cursor-only projection.
+`RawInitialState` owns the complete registration response. Typed initial fields depend on fetch filters; registration does not fetch message bodies. Timeout/capability metadata is retained, but the library does not configure HTTP timeouts, maintain a state store or retry polling automatically. Common message/update/delete/flag events expose typed fields; unmodeled fields and unknown event kinds are retained in `EventObject.ExtensionData`, even when they reuse a typed field name.
+
+Use `LastEventId64` and pass returned `EventObject.Id` values directly to the long polling overloads. Existing int overloads and `LastEventId` properties remain compatible for in-range cursors; legacy getters throw `OverflowException` outside that range. `RegisterQueue` remains an int queue/cursor projection: an out-of-range cursor returns an explicit Try failure with the allocated queue ID, which the caller should delete when unused; prefer detailed `Register` for lossless cursors.
 
 **User management:**
 
@@ -292,7 +296,7 @@ Upload `url` is required (FL272); returned `filename` is optional (FL285). Attac
 
 `Files.GetTemporaryUrl(pathId)` accepts a complete logical attachment `path_id` such as `1/ab/token/report.pdf`, not an upload URL, and returns an unauthenticated link. Use it immediately and **do not persist it**; the server-configured lifetime is generally 60 seconds. `Files.CheckThumbnailStatus(pathId)` (FL479) checks once: `false` means not ready, not a request failure. The caller owns polling. Reserved filename characters are encoded per path segment.
 
-Curl uploads require working nonblocking stdin support (`--upload-file .`), verified here with Windows curl 8.22.0; older Windows curl builds lack that capability. Nonblocking input lets curl handle early HTTP rejection while the source awaits data. The client then cancels cooperative reads without losing received diagnostics; interrupted uploads never become success merely because the server returned 2xx. Ordinary curl requests retain their existing behavior.
+Curl uploads require working nonblocking stdin support (`--upload-file .`), verified here with Windows curl 8.22.0; older Windows curl builds lack that capability. Nonblocking input lets curl handle early HTTP rejection while the source awaits data. The client then cancels cooperative reads without losing received diagnostics; interrupted uploads never become success merely because the server returned 2xx. Ordinary curl requests also retain actual HTTP status independently of their JSON body.
 
 **Fetch an API key from username/password:**
 
