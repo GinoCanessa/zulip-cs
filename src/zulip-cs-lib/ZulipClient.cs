@@ -585,8 +585,7 @@ namespace zulip_cs_lib
                     start.ArgumentList.Add("--header");
                     start.ArgumentList.Add("Transfer-Encoding:");
                 }
-                start.ArgumentList.Add("--max-time");
-                start.ArgumentList.Add(timeout.TotalSeconds.ToString("0.#########", CultureInfo.InvariantCulture));
+                // Use the .NET deadline: --max-time makes Unix curl wait on stdin before handling responses.
                 start.ArgumentList.Add("--write-out");
                 start.ArgumentList.Add(suffix + "%{http_code}");
                 process = new Process { StartInfo = start };
@@ -618,11 +617,9 @@ namespace zulip_cs_lib
                 receivedResponse = true;
                 if (!hasStatus || status == 0 || process.ExitCode != 0)
                 {
-                    string failure = process.ExitCode == 28
-                        ? UploadCancellationDetails(cancellationToken, timeout)
-                        : process.ExitCode != 0
-                            ? $"curl exited with code {process.ExitCode}: {errors.Trim()}"
-                            : "curl returned no HTTP upload status.";
+                    string failure = process.ExitCode != 0
+                        ? $"curl exited with code {process.ExitCode}: {errors.Trim()}"
+                        : "curl returned no HTTP upload status.";
                     result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
                         ? failure : result.CaughtException + " " + failure;
                     result.Success = false;
