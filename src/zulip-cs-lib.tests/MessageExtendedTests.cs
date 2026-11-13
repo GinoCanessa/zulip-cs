@@ -84,6 +84,36 @@ namespace zulip_set_lib.tests
                 "newest", 0, 10, [], Messages.FlagOperation.Add, "read"));
         }
 
+        /// <summary>Impossible counts and missing nonempty cursors fail with explicit applied-mutation guidance.</summary>
+        /// <param name="processed">The returned processed count.</param>
+        /// <param name="updated">The returned updated count.</param>
+        /// <param name="first">The returned first cursor JSON.</param>
+        /// <param name="last">The returned last cursor JSON.</param>
+        [Theory]
+        [InlineData(-1, 0, "null", "null")]
+        [InlineData(1, -1, "1", "1")]
+        [InlineData(1, 2, "1", "1")]
+        [InlineData(1, 0, "null", "null")]
+        [InlineData(1, 0, "1", "null")]
+        [InlineData(0, 0, "1", "1")]
+        public async Task Messages_UpdateFlagsForNarrow_RejectsInconsistentProgress(
+            int processed, int updated, string first, string last)
+        {
+            string json = $"{{\"result\":\"success\",\"processed_count\":{processed},\"updated_count\":{updated}," +
+                $"\"first_processed_id\":{first},\"last_processed_id\":{last},\"found_oldest\":false,\"found_newest\":false}}";
+            List<HttpRequestMessage> requests = [];
+            ZulipClient client = Utils.CreateCapturingClient(requests, json, json);
+            var result = await client.Messages.TryUpdateFlagsForNarrow("oldest", 0, 10, [], Messages.FlagOperation.Add, "read");
+            Assert.False(result.success);
+            Assert.Null(result.update);
+            Assert.Contains("may already have been applied", result.details);
+            Assert.Equal(json, client.LastResponse!.HttpResponseBody);
+            Assert.Single(requests);
+            Exception failure = await Assert.ThrowsAsync<Exception>(() => client.Messages.UpdateFlagsForNarrow(
+                "oldest", 0, 10, [], Messages.FlagOperation.Add, "read"));
+            Assert.Contains("may already have been applied", failure.Message);
+        }
+
         /// <summary>Invalid range and operation inputs make no mutation request.</summary>
         [Fact]
         public async Task Messages_UpdateFlagsForNarrow_InvalidInputDoesNotSend()

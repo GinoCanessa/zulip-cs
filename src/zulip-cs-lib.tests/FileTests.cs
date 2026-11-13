@@ -409,6 +409,75 @@ namespace zulip_set_lib.tests
             }
         }
 
+        /// <summary>Curl exit cancels a pending cooperative source read without discarding the received HTTP response or independent source failures.</summary>
+        /// <param name="status">The early response status.</param>
+        /// <param name="sourceFault">Whether the source fails independently instead of being canceled by process exit.</param>
+        [Theory(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
+        [InlineData(413, false)]
+        [InlineData(200, false)]
+        [InlineData(200, true)]
+        public async Task Files_CurlEarlyResponseInterruptsPendingReadAndPreservesFailures(int status, bool sourceFault)
+        {
+            using CancellationTokenSource deadline = TestDeadline();
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            using BlockingUploadStream input = new BlockingUploadStream();
+            string body = status == 413
+                ? "{\"result\":\"error\",\"code\":\"BAD_REQUEST\",\"msg\":\"Actual blocked-source rejection\"}"
+                : UploadBody;
+            Task server = RejectBeforeBody(listener, body, deadline.Token,
+                sourceFault ? input.Faulted.Task : input.Waiting.Task, status);
+            Task<(bool success, string? details, FileUploadResult? result)>? operation = null;
+            try
+            {
+                ZulipClient client = new ZulipClient(LoopbackSite(listener), Email, Key, "curl")
+                {
+                    UploadTimeout = TimeSpan.FromSeconds(100)
+                };
+                operation = client.Files.TryUpload(input, "pending.dat", cancellationToken: deadline.Token);
+                await input.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(5), deadline.Token);
+                if (sourceFault) input.Release.TrySetResult();
+                (bool success, string? details, FileUploadResult? result) outcome =
+                    await operation.WaitAsync(TimeSpan.FromSeconds(8), deadline.Token);
+                await server.WaitAsync(TimeSpan.FromSeconds(5), deadline.Token);
+                Assert.False(outcome.success);
+                Assert.Null(outcome.result);
+                Assert.Equal(status, client.LastResponse!.HttpResponseCode);
+                Assert.Equal(body, client.LastResponse.HttpResponseBody);
+                Assert.False(input.Disposed);
+                Assert.False(client.LastResponse.Success);
+                Assert.DoesNotContain("timed out", outcome.details);
+                Assert.DoesNotContain("cleanup exceeded", outcome.details);
+                if (sourceFault)
+                {
+                    Assert.Contains("Actual independent source failure", outcome.details);
+                    Assert.False(input.CancellationObserved);
+                }
+                else
+                {
+                    Assert.True(input.CancellationObserved);
+                    Assert.Contains(status == 413 ? "Actual blocked-source rejection" : "Upload incomplete", outcome.details);
+                    Assert.DoesNotContain("Upload canceled", outcome.details);
+                }
+            }
+            finally
+            {
+                deadline.Cancel();
+                listener.Stop();
+                if (operation != null)
+                {
+                    try { await operation.WaitAsync(TimeSpan.FromSeconds(8), TestContext.Current.CancellationToken); }
+                    catch (OperationCanceledException) { }
+                    catch (TimeoutException) { }
+                }
+                try { await server.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken); }
+                catch (OperationCanceledException) { }
+                catch (SocketException) { }
+                catch (IOException) { }
+                catch (TimeoutException) { }
+            }
+        }
+
         /// <summary>Curl preserves malformed envelopes and rejects success-shaped bodies on failed HTTP requests.</summary>
         /// <param name="status">The actual HTTP response status.</param>
         /// <param name="body">The malformed envelope.</param>
@@ -609,12 +678,17 @@ namespace zulip_set_lib.tests
         /// <param name="listener">The loopback listener.</param>
         /// <param name="body">The actual error body.</param>
         /// <param name="token">The fixture deadline.</param>
-        private static async Task RejectBeforeBody(TcpListener listener, string body, CancellationToken token)
+        /// <param name="beforeResponse">An optional source-read signal to await before responding.</param>
+        /// <param name="status">The early HTTP response status.</param>
+        private static async Task RejectBeforeBody(
+            TcpListener listener, string body, CancellationToken token, Task? beforeResponse = null, int status = 413)
         {
             using TcpClient connection = await listener.AcceptTcpClientAsync(token);
             using NetworkStream stream = connection.GetStream();
             await ReadHeaders(stream, token);
-            await SendResponse(stream, body, 413, token);
+            if (beforeResponse != null) await beforeResponse.WaitAsync(token);
+            await SendResponse(stream, body, status, token);
+            if (status is >= 200 and < 300) connection.Client.Shutdown(SocketShutdown.Send);
             // Drain until the client observes rejection so closing with unread data does not reset the response.
             byte[] buffer = new byte[16384];
             try { while (await stream.ReadAsync(buffer, token) != 0) { } }
@@ -745,7 +819,7 @@ namespace zulip_set_lib.tests
         }
 
         /// <summary>A readable fixture stream with optional seekability or endless bounded-buffer reads.</summary>
-        private sealed class UploadStream : Stream
+        private class UploadStream : Stream
         {
             /// <summary>The small test payload.</summary>
             private readonly byte[] _payload;
@@ -865,6 +939,53 @@ namespace zulip_set_lib.tests
             {
                 Disposed = true;
                 base.Dispose(disposing);
+            }
+        }
+
+        /// <summary>Supplies initial bytes, then blocks cooperatively or raises an independently released source failure.</summary>
+        private sealed class BlockingUploadStream : UploadStream
+        {
+            /// <summary>Whether the initial data has been returned.</summary>
+            private bool _started;
+
+            /// <summary>Initializes a nonseekable blocking caller-owned source.</summary>
+            internal BlockingUploadStream() : base(new byte[81920], false) { }
+
+            /// <summary>Gets the signal that a pending read is awaiting more data.</summary>
+            internal TaskCompletionSource Waiting { get; } = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            /// <summary>Gets the test-only release for an independent source error.</summary>
+            internal TaskCompletionSource Release { get; } = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            /// <summary>Gets the signal that the independent source failure has been raised.</summary>
+            internal TaskCompletionSource Faulted { get; } = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            /// <summary>Gets whether curl exit cancellation reached the pending source read.</summary>
+            internal bool CancellationObserved { get; private set; }
+
+            /// <summary>Returns initial bytes, then waits while respecting the exact supplied cancellation token.</summary>
+            /// <param name="buffer">The destination buffer.</param>
+            /// <param name="cancellationToken">The serializer cancellation token.</param>
+            /// <returns>The initial bytes, followed by cancellation or an independent source exception.</returns>
+            public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                if (!_started)
+                {
+                    _started = true;
+                    return await base.ReadAsync(buffer, cancellationToken);
+                }
+                Waiting.TrySetResult();
+                try
+                {
+                    await Release.Task.WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    CancellationObserved = true;
+                    throw;
+                }
+                Faulted.TrySetResult();
+                throw new IOException("Actual independent source failure");
             }
         }
     }

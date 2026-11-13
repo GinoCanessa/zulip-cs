@@ -492,10 +492,13 @@ namespace zulip_cs_lib
             TimeSpan timeout = UploadTimeout;
             using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(timeout);
+            using CancellationTokenSource serializer = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
             ZulipResponse result = new ZulipResponse();
             Process? process = null;
             bool started = false;
+            bool receivedResponse = false;
             Task? completion = null;
+            Task<(Exception? error, bool interrupted)>? write = null;
             try
             {
                 deadline.Token.ThrowIfCancellationRequested();
@@ -505,7 +508,7 @@ namespace zulip_cs_lib
                 start.RedirectStandardInput = true;
                 start.ArgumentList.Add("--http1.1");
                 start.ArgumentList.Add("--upload-file");
-                start.ArgumentList.Add("-");
+                start.ArgumentList.Add(".");
                 start.ArgumentList.Add("--header");
                 start.ArgumentList.Add("Content-Type: " + multipart.Headers.ContentType);
                 start.ArgumentList.Add("--header");
@@ -529,14 +532,17 @@ namespace zulip_cs_lib
                 Task<string> stdout = process.StandardOutput.ReadToEndAsync();
                 Task<string> stderr = process.StandardError.ReadToEndAsync();
                 Task exited = process.WaitForExitAsync();
-                Task<Exception?> write = WriteCurlUploadAsync(multipart, process, deadline.Token);
-                completion = Task.WhenAll(stdout, stderr, exited, write);
-                await completion.WaitAsync(deadline.Token);
+                Task received = Task.WhenAll(stdout, stderr, exited);
+                write = WriteCurlUploadAsync(multipart, process, serializer.Token);
+                completion = Task.WhenAll(received, write);
+                await exited.WaitAsync(deadline.Token);
+                Task stopSerializer = serializer.CancelAsync();
+                completion = Task.WhenAll(received, write, stopSerializer);
+                await received.WaitAsync(deadline.Token);
                 deadline.Token.ThrowIfCancellationRequested();
 
                 string output = await stdout;
                 string errors = await stderr;
-                Exception? writeError = await write;
                 int marker = output.LastIndexOf(suffix, StringComparison.Ordinal);
                 bool hasStatus = marker >= 0 && output.Length == marker + suffix.Length + 3 &&
                     int.TryParse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out _);
@@ -545,15 +551,14 @@ namespace zulip_cs_lib
                     : 0;
                 string body = marker >= 0 ? output.Substring(0, marker) : output;
                 result = ParseUploadResponse(body, status);
-                if (!hasStatus || status == 0 || process.ExitCode != 0 || writeError != null)
+                receivedResponse = true;
+                if (!hasStatus || status == 0 || process.ExitCode != 0)
                 {
                     string failure = process.ExitCode == 28
                         ? UploadCancellationDetails(cancellationToken, timeout)
                         : process.ExitCode != 0
                             ? $"curl exited with code {process.ExitCode}: {errors.Trim()}"
-                            : writeError != null
-                                ? "Upload stream failed: " + UploadExceptionDetails(writeError)
-                                : "curl returned no HTTP upload status.";
+                            : "curl returned no HTTP upload status.";
                     result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
                         ? failure : result.CaughtException + " " + failure;
                     result.Success = false;
@@ -578,12 +583,36 @@ namespace zulip_cs_lib
             {
                 if (process != null)
                 {
+                    Task stopSerializer = serializer.CancelAsync();
+                    completion = completion == null ? stopSerializer : Task.WhenAll(completion, stopSerializer);
                     string? cleanupError = started ? await CleanupCurlUploadAsync(process, completion) : null;
                     if (cleanupError != null)
                     {
                         result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
                             ? cleanupError : result.CaughtException + " " + cleanupError;
                         result.Success = false;
+                    }
+                    if (write != null)
+                    {
+                        string? writeFailure = null;
+                        if (!write.IsCompletedSuccessfully && receivedResponse)
+                        {
+                            writeFailure = "Upload incomplete: curl exited before multipart serialization completed.";
+                        }
+                        else if (write.IsCompletedSuccessfully)
+                        {
+                            (Exception? error, bool interrupted) outcome = write.Result;
+                            if (outcome.error != null && !outcome.interrupted)
+                                writeFailure = "Upload stream failed: " + UploadExceptionDetails(outcome.error);
+                            else if (outcome.interrupted && receivedResponse && result.HttpResponseCode is >= 200 and < 300)
+                                writeFailure = "Upload incomplete: curl exited before multipart serialization completed.";
+                        }
+                        if (writeFailure != null)
+                        {
+                            result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
+                                ? writeFailure : result.CaughtException + " " + writeFailure;
+                            result.Success = false;
+                        }
                     }
                     process.Dispose();
                 }
@@ -595,27 +624,29 @@ namespace zulip_cs_lib
         /// <summary>Serializes multipart incrementally and always sends binary stdin EOF, even on early rejection.</summary>
         /// <param name="multipart">The streaming multipart content.</param>
         /// <param name="process">The exact child process receiving binary stdin.</param>
-        /// <param name="cancellationToken">The upload deadline.</param>
-        /// <returns>A write failure to consider after collecting the actual server response.</returns>
-        private static async Task<Exception?> WriteCurlUploadAsync(
+        /// <param name="cancellationToken">The serializer deadline, also canceled when curl exits.</param>
+        /// <returns>A write failure and whether it was interrupted by the serializer token.</returns>
+        private static async Task<(Exception? error, bool interrupted)> WriteCurlUploadAsync(
             MultipartFormDataContent multipart, Process process, CancellationToken cancellationToken)
         {
             Exception? failure = null;
+            bool interrupted = false;
             try
             {
-                // curl -F @- buffers stdin; --upload-file - streams these already serialized multipart bytes.
+                // -F @- buffers stdin; -T - blocks response processing. -T . streams while observing early server responses.
                 await multipart.CopyToAsync(process.StandardInput.BaseStream, cancellationToken);
             }
             catch (Exception exception)
             {
                 failure = exception;
+                interrupted = exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
             }
             finally
             {
                 try { process.StandardInput.Close(); }
                 catch (Exception exception) { failure ??= exception; }
             }
-            return failure;
+            return (failure, interrupted);
         }
 
         /// <summary>Kills only the upload's child process tree and bounds pipe/exit cleanup independently of caller cancellation.</summary>
@@ -644,6 +675,13 @@ namespace zulip_cs_lib
             catch (Exception exception)
             {
                 return "Upload process cleanup failed: " + exception.Message;
+            }
+            finally
+            {
+                try { process.StandardInput.Close(); }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
             }
         }
 

@@ -217,7 +217,7 @@ string html = await client.Messages.Render("https://example.org", populateUrlEmb
 // FL513 may deliver later rendering changes as url_embed_data events.
 ```
 
-Flags-for-narrow (FL155) is the replacement for legacy mark-all/channel/topic-read routes. An empty range has null cursors; the server may process fewer messages than requested. Continue deliberately using the returned boundaries, and stop or report lack of progress rather than retrying indefinitely. `hide_link_previews` is a supported flag from FL510. The original one-argument render overload still omits the embed option.
+Flags-for-narrow (FL155) is the replacement for legacy mark-all/channel/topic-read routes. An empty range has null cursors; nonempty ranges require cursors and counts must be nonnegative with updated <= processed. Malformed progress fails explicitly with applied-mutation guidance. The server may process fewer messages than requested. Continue deliberately using the returned boundaries, and stop or report lack of progress rather than retrying indefinitely. `hide_link_previews` is a supported flag from FL510. The original one-argument render overload still omits the embed option.
 
 **Retain creation identities and publish presence:**
 
@@ -255,9 +255,11 @@ AttachmentListResult attachments = await client.Files.GetAll();
 await client.Files.Delete(42);
 ```
 
-Uploads consume the remaining stream bytes through HttpClient or binary curl stdin, without whole-file buffering or temporary content files. The caller owns the input stream, including on error/cancellation. `UploadTimeout` defaults to 100 seconds and accepts positive durations up to 2,147,483,646 milliseconds; curl cleanup can add up to five seconds. Cancellation and upload timeout return explicit Try failure details (throwing variants throw). An injected HttpClient's own timeout may be shorter, and cancellation-ignoring input streams may outlive bounded cleanup. Real child-process checks use only bounded loopback fixtures.
+Uploads consume the remaining stream bytes through HttpClient or binary curl stdin, without whole-file buffering or temporary content files. The caller owns the input stream, including on error/cancellation; its position is not restored and may be indeterminate after a canceled read. `UploadTimeout` defaults to 100 seconds and accepts positive durations up to 2,147,483,646 milliseconds; curl cleanup can add up to five seconds. Cancellation and upload timeout return explicit Try failure details (throwing variants throw). An injected HttpClient's own timeout may be shorter, and cancellation-ignoring input streams may outlive bounded cleanup. Real child-process checks use only bounded loopback fixtures.
 
 Upload `url` is required (FL272); returned `filename` is optional (FL285). Attachment reads use current seconds-based timestamps (FL443) and `message_ids` (FL472), not the historical embedded-message shape. Upload success does not mean the attachment has been referenced by a message; malformed mutation results do not imply rollback.
+
+Curl uploads require working nonblocking stdin support (`--upload-file .`), verified here with Windows curl 8.22.0; older Windows curl builds lack that capability. Nonblocking input lets curl handle early HTTP rejection while the source awaits data. The client then cancels cooperative reads without losing received diagnostics; interrupted uploads never become success merely because the server returned 2xx. Ordinary curl requests retain their existing behavior.
 
 **Fetch an API key from username/password:**
 

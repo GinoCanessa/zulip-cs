@@ -58,6 +58,10 @@ namespace zulip_cs_lib.Resources
             if (!ResponsePayload.TryRead<NarrowFlagUpdateResult>(response, "Messages.UpdateFlagsForNarrow",
                 null, JsonValueKind.Object, out NarrowFlagUpdateResult? update, out string? details, ValidateNarrowFlagUpdate))
             {
+                if (response.Result == ZulipResponse.ZulipResultSuccess)
+                {
+                    details += " The update may already have been applied; inspect the response before retrying.";
+                }
                 return (false, details, null);
             }
             update!.Response = response;
@@ -106,6 +110,15 @@ namespace zulip_cs_lib.Resources
                     value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                     return $"required field '{field}' must be a boolean.";
             }
+
+            int processed = root.GetProperty("processed_count").GetInt32();
+            int updated = root.GetProperty("updated_count").GetInt32();
+            if (processed < 0 || updated < 0 || updated > processed)
+                return "processed_count and updated_count must be nonnegative, with updated_count <= processed_count.";
+            bool firstIsNull = root.GetProperty("first_processed_id").ValueKind == JsonValueKind.Null;
+            bool lastIsNull = root.GetProperty("last_processed_id").ValueKind == JsonValueKind.Null;
+            if (processed == 0 ? !firstIsNull || !lastIsNull : firstIsNull || lastIsNull)
+                return "first_processed_id and last_processed_id must both be null exactly when processed_count is zero.";
             return null;
         }
     }

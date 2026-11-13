@@ -139,8 +139,9 @@ Capabilities:
 - `Upload` / `TryUpload` accepts a readable caller-owned stream, filename, optional content type and cancellation token; returns `FileUploadResult` with required server-relative URL (FL272), optional filename (FL285) and request-local diagnostics.
 - `GetAll` / `TryGetAll` returns `AttachmentListResult` with current attachment metadata, space usage and diagnostics. Current `message_ids` shape requires FL472; timestamps are in seconds (FL443).
 - `Delete` / `TryDelete` removes an attachment by ID.
-- Multipart uses the focused upload delegate, not ordinary scalar/JSON form encoding. HttpClient and curl consume the same streaming multipart bytes, including nonseekable streams, quoted/Unicode filenames and binary data. Input streams are never disposed by the client.
+- Multipart uses the focused upload delegate, not ordinary scalar/JSON form encoding. HttpClient and curl consume the same streaming multipart bytes, including nonseekable streams, quoted/Unicode filenames and binary data. Input streams are never disposed by the client; positions are not restored and canceled reads can leave them indeterminate.
 - `ZulipClient.UploadTimeout` defaults to 100 seconds; valid values are positive and at most 2,147,483,646 milliseconds. Cancellation/timeout and HTTP/subprocess/parse errors remain explicit; curl cleanup can add five seconds. An injected HttpClient may impose its own shorter timeout; cancellation-ignoring caller streams may outlive cleanup. No temporary payload files or automatic upload retries/resumption.
+- Curl uploads require functional nonblocking stdin (`--upload-file .`); verified with Windows curl 8.22.0. On early process exit, cooperative source reads are canceled and actual status/body are retained independently of the writer; interrupted 2xx uploads remain explicit failures.
 
 ### Narrow
 
@@ -173,7 +174,7 @@ For `Try*` methods:
 - `success == false`: `details` contains user-readable failure reason.
 - `ignored_parameters_unsupported` is a nonfatal warning retained on responses/detailed results. `RawPayload`/`ExtensionData` preserve unknown response data.
 - Batch Try success means the one request succeeded, not necessarily that all work completed. Inspect `Complete`; convenience methods reject known partial work and report unspecified legacy completion in Try details.
-- Narrow flag results carry explicit range counts/cursors/boundaries. Empty ranges preserve null IDs; no internal continuation is performed.
+- Narrow flag results carry explicit range counts/cursors/boundaries. Nonnegative counts must satisfy updated <= processed; cursors are null exactly for empty ranges. Malformed progress explicitly warns that the update may have been applied. No internal continuation is performed.
 - A malformed success after a mutation does not imply rollback. Inspect the retained response before retrying an operation with side effects.
 
 For throwing variants:
