@@ -1,18 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using zulip_cs_lib.Resources;
 
 namespace zulip_cs_lib
 {
     /// <summary>A Zulip client.</summary>
-    public class ZulipClient
+    public partial class ZulipClient : IDisposable
     {
         /// <summary>The site.</summary>
         private string _site = null!;
@@ -25,6 +28,12 @@ namespace zulip_cs_lib
 
         /// <summary>The HTTP client.</summary>
         private HttpClient? _httpClient;
+
+        /// <summary>Whether this wrapper owns its HTTP client.</summary>
+        private readonly bool _ownsHttpClient;
+
+        /// <summary>Whether this wrapper has been disposed.</summary>
+        private int _disposed;
 
         /// <summary>URI of the site.</summary>
         private Uri _siteUri = null!;
@@ -68,8 +77,37 @@ namespace zulip_cs_lib
         /// <summary>The navigation views.</summary>
         private NavigationViews _navigationViews = null!;
 
+        /// <summary>The files resource.</summary>
+        private Files _files = null!;
+
+        /// <summary>The channel folders resource.</summary>
+        private ChannelFolders _channelFolders = null!;
+
+        /// <summary>The bot-account storage resource.</summary>
+        private BotStorage _botStorage = null!;
+
+        /// <summary>The bounded upload timeout.</summary>
+        private TimeSpan _uploadTimeout = TimeSpan.FromSeconds(100);
+
         /// <summary>The curl command.</summary>
         private string? _curlCommand;
+
+        /// <summary>Gets diagnostics and warnings for the most recently completed request, or null before any request completes.</summary>
+        /// <remarks>Concurrent callers must use detailed results for per-operation association; completion order is not invocation order.</remarks>
+        public ZulipResponse? LastResponse { get; private set; }
+
+        /// <summary>Gets or sets the timeout for an entire upload, including reading its response; defaults to 100 seconds.</summary>
+        /// <remarks>Must be positive and finite. Curl cleanup has an independent additional five-second bound.</remarks>
+        public TimeSpan UploadTimeout
+        {
+            get => _uploadTimeout;
+            set
+            {
+                if (value <= TimeSpan.Zero || value.TotalMilliseconds > int.MaxValue - 1)
+                    throw new ArgumentOutOfRangeException(nameof(value), "UploadTimeout must be positive and finite.");
+                _uploadTimeout = value;
+            }
+        }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
         /// <param name="site">      The Zulip site URL.</param>
@@ -77,6 +115,17 @@ namespace zulip_cs_lib
         /// <param name="apiKey">    The API key.</param>
         /// <param name="httpClient">The HTTP client.</param>
         public ZulipClient(string site, string userEmail, string apiKey, HttpClient httpClient)
+            : this(site, userEmail, apiKey, httpClient, false)
+        {
+        }
+
+        /// <summary>Initializes an HTTP client wrapper with explicit transport ownership.</summary>
+        /// <param name="site">The Zulip site URL.</param>
+        /// <param name="userEmail">The user email address.</param>
+        /// <param name="apiKey">The API key.</param>
+        /// <param name="httpClient">The transport, or null to create an owned client.</param>
+        /// <param name="ownsHttpClient">Whether this wrapper owns the transport.</param>
+        internal ZulipClient(string site, string userEmail, string apiKey, HttpClient? httpClient, bool ownsHttpClient)
         {
             if (string.IsNullOrEmpty(site) ||
                 (!Uri.TryCreate(site, UriKind.Absolute, out Uri? siteUri)) ||
@@ -100,13 +149,14 @@ namespace zulip_cs_lib
             _siteUri = siteUri;
             _userEmail = userEmail;
             _apiKey = apiKey;
-            _httpClient = httpClient;
+            _httpClient = httpClient ?? (ownsHttpClient ? new HttpClient() : throw new ArgumentNullException(nameof(httpClient)));
+            _ownsHttpClient = ownsHttpClient;
             _curlCommand = null;
 
             string authHeader = _userEmail + ":" + _apiKey;
             _authHeader = "Basic " + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(authHeader));
 
-            InitializeResources(DoZulipRequestHttpClient);
+            InitializeResources(DoZulipRequestHttpClient, DoZulipUploadHttpClient);
         }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
@@ -146,7 +196,7 @@ namespace zulip_cs_lib
             string authHeader = _userEmail + ":" + _apiKey;
             _authHeader = "Basic " + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(authHeader));
 
-            InitializeResources(DoZulipRequestCurl);
+            InitializeResources(DoZulipRequestCurl, DoZulipUploadCurl);
         }
 
 
@@ -155,7 +205,7 @@ namespace zulip_cs_lib
         /// <param name="userEmail">The user email address.</param>
         /// <param name="apiKey">   The API key.</param>
         public ZulipClient(string site, string userEmail, string apiKey)
-        : this(site, userEmail, apiKey, new HttpClient())
+        : this(site, userEmail, apiKey, null, true)
         {
         }
 
@@ -164,7 +214,7 @@ namespace zulip_cs_lib
         public ZulipClient(string zuliprcFilename)
         : this(zuliprcFilename, true)
         {
-            InitializeResources(DoZulipRequestHttpClient);
+            InitializeResources(DoZulipRequestHttpClient, DoZulipUploadHttpClient);
         }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
@@ -227,6 +277,7 @@ namespace zulip_cs_lib
             if (createHttpClient)
             {
                 _httpClient = new HttpClient();
+                _ownsHttpClient = true;
             }
             else
             {
@@ -241,12 +292,12 @@ namespace zulip_cs_lib
         /// <exception cref="FileNotFoundException">Thrown when the requested file is not present.</exception>
         /// <exception cref="KeyNotFoundException"> Thrown when a Key Not Found error condition occurs.</exception>
         /// <param name="zuliprcFilename">   Filename of the zuliprc file.</param>
-        /// <param name="httpMessageHandler">The HTTP message handler.</param>
+        /// <param name="httpClient">The caller-owned HTTP client.</param>
         public ZulipClient(string zuliprcFilename, HttpClient httpClient)
         : this(zuliprcFilename, false)
         {
-            _httpClient = httpClient;
-            InitializeResources(DoZulipRequestHttpClient);
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            InitializeResources(DoZulipRequestHttpClient, DoZulipUploadHttpClient);
         }
 
         /// <summary>Initializes a new instance of the zulip_cs_lib.ZulipClient class.</summary>
@@ -256,8 +307,29 @@ namespace zulip_cs_lib
         : this(zuliprcFilename, false)
         {
             _curlCommand = curlCommand;
-            InitializeResources(DoZulipRequestCurl);
+            InitializeResources(DoZulipRequestCurl, DoZulipUploadCurl);
         }
+
+        /// <summary>Releases an internally owned HTTP client; injected clients remain caller-owned.</summary>
+        /// <remarks>Subsequent transport operations throw ObjectDisposedException, including through Try methods.</remarks>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>Releases owned managed resources once.</summary>
+        /// <param name="disposing">Whether disposing managed resources.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0 && _ownsHttpClient)
+            {
+                _httpClient?.Dispose();
+            }
+        }
+
+        /// <summary>Rejects transport operations after disposal.</summary>
+        private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         /// <summary>Gets the Messages Interface.</summary>
         public Messages Messages => _messages;
@@ -295,23 +367,39 @@ namespace zulip_cs_lib
         /// <summary>Gets the Navigation Views Interface.</summary>
         public NavigationViews NavigationViews => _navigationViews;
 
+        /// <summary>Gets the streaming upload and attachment interface.</summary>
+        public Files Files => _files;
+
+        /// <summary>Gets channel-folder administration.</summary>
+        public ChannelFolders ChannelFolders => _channelFolders;
+
+        /// <summary>Gets bot-account key/value storage.</summary>
+        public BotStorage BotStorage => _botStorage;
+
         /// <summary>Initializes all resource classes.</summary>
         /// <param name="doZulipRequest">The request delegate.</param>
+        /// <param name="doUpload">The focused streaming upload delegate.</param>
         private void InitializeResources(
-            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest)
+            Func<HttpMethod, string, Dictionary<string, string>?, Task<ZulipResponse>> doZulipRequest,
+            MultipartUploadDelegate doUpload)
         {
             _messages = new Messages(doZulipRequest);
             _channels = new Channels(doZulipRequest);
-            _users = new Users(doZulipRequest);
+            _users = new Users(doZulipRequest, doUpload);
             _server = new Server(doZulipRequest);
             _events = new Events(doZulipRequest);
             _scheduledMessages = new ScheduledMessages(doZulipRequest);
             _drafts = new Drafts(doZulipRequest);
             _invitations = new Invitations(doZulipRequest);
-            _organization = new Organization(doZulipRequest);
+            _organization = new Organization(doZulipRequest, doUpload);
             _savedSnippets = new SavedSnippets(doZulipRequest);
             _reminders = new Reminders(doZulipRequest);
             _navigationViews = new NavigationViews(doZulipRequest);
+            _files = new Files(doZulipRequest,
+                (stream, filename, contentType, token) =>
+                    doUpload("api/v1/user_uploads", "filename", stream, filename, contentType, token));
+            _channelFolders = new ChannelFolders(doZulipRequest);
+            _botStorage = new BotStorage(doZulipRequest);
         }
 
         /// <summary>Fetches an API key from the server using username and password.</summary>
@@ -334,24 +422,31 @@ namespace zulip_cs_lib
 
                 Uri requestUri = new Uri(siteUri, "api/v1/fetch_api_key");
 
-                HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, requestUri);
+                using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, requestUri);
                 request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
                 {
                     { "username", username },
                     { "password", password },
                 });
 
-                HttpResponseMessage response = await client.SendAsync(request);
+                using HttpResponseMessage response = await client.SendAsync(request);
                 string body = await response.Content.ReadAsStringAsync();
 
-                ZulipResponse zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
+                ZulipResponse zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)
+                    ?? throw new JsonException("The Zulip response must be a JSON object.");
 
-                if (zulipResponse.Result == ZulipResponse.ZulipResultSuccess)
+                zulipResponse.HttpResponseCode = (int)response.StatusCode;
+                if (ResponsePayload.TryRead(zulipResponse, "FetchApiKey", "api_key", JsonValueKind.String,
+                    out string? apiKey, out string? details,
+                    value => string.IsNullOrWhiteSpace(value.GetString()) ? "api_key must be nonempty." : null) &&
+                    ResponsePayload.TryRead(zulipResponse, "FetchApiKey", "email", JsonValueKind.String,
+                    out string? email, out details,
+                    value => string.IsNullOrWhiteSpace(value.GetString()) ? "email must be nonempty." : null))
                 {
-                    return (true, null, zulipResponse.ApiKey, zulipResponse.FetchedEmail);
+                    return (true, null, apiKey!, email!);
                 }
 
-                return (false, "FetchApiKey failed: " + zulipResponse.GetFailureMessage(), null, null);
+                return (false, details, null, null);
             }
             catch (Exception ex)
             {
@@ -366,118 +461,500 @@ namespace zulip_cs_lib
             }
         }
 
+        /// <summary>Creates identical streaming multipart content for both upload transports.</summary>
+        /// <param name="fieldName">The multipart file field name.</param>
+        /// <param name="stream">The caller-owned input stream.</param>
+        /// <param name="filename">The multipart filename.</param>
+        /// <param name="contentType">The validated MIME content type.</param>
+        /// <returns>The disposable content, which never owns the input stream.</returns>
+        private static MultipartFormDataContent CreateUploadContent(
+            string fieldName, Stream stream, string filename, string contentType)
+        {
+            MultipartFormDataContent multipart = new MultipartFormDataContent();
+            StreamContent file = new StreamContent(new NonDisposingStream(stream));
+            try
+            {
+                file.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+                ContentDispositionHeaderValue disposition = new ContentDispositionHeaderValue("form-data")
+                {
+                    Name = fieldName
+                };
+                // The FileName setter rejects embedded quotes even when escaped. Set the validated quoted parameter directly.
+                string encodedFilename = filename.Any(character => character > 127)
+                    ? "=?utf-8?B?" + Convert.ToBase64String(Encoding.UTF8.GetBytes(filename)) + "?="
+                    : filename.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+                disposition.Parameters.Add(new NameValueHeaderValue("filename", "\"" + encodedFilename + "\""));
+                disposition.FileNameStar = filename;
+                file.Headers.ContentDisposition = disposition;
+                multipart.Add(file);
+                return multipart;
+            }
+            catch
+            {
+                file.Dispose();
+                multipart.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Uploads streaming multipart content through HttpClient with bounded cancellation.</summary>
+        /// <param name="endpoint">The API-relative POST endpoint.</param>
+        /// <param name="fieldName">The multipart file field.</param>
+        /// <param name="stream">The readable caller-owned stream.</param>
+        /// <param name="filename">The multipart filename.</param>
+        /// <param name="contentType">The validated MIME content type.</param>
+        /// <param name="cancellationToken">Caller cancellation.</param>
+        /// <returns>The response and actual HTTP diagnostics.</returns>
+        private async Task<ZulipResponse> DoZulipUploadHttpClient(
+            string endpoint, string fieldName, Stream stream, string filename, string contentType, CancellationToken cancellationToken)
+        {
+            ThrowIfDisposed();
+            TimeSpan timeout = UploadTimeout;
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(timeout);
+            ZulipResponse result = new ZulipResponse();
+            try
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, new Uri(_siteUri, endpoint));
+                request.Headers.Add("Authorization", _authHeader);
+                request.Content = CreateUploadContent(fieldName, stream, filename, contentType);
+                using HttpResponseMessage response = await _httpClient!.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                result.HttpResponseCode = (int)response.StatusCode;
+                string body = await response.Content.ReadAsStringAsync(deadline.Token);
+                result = ParseResponse(body, (int)response.StatusCode);
+            }
+            catch (OperationCanceledException exception)
+            {
+                result.CaughtException = deadline.IsCancellationRequested
+                    ? UploadCancellationDetails(cancellationToken, timeout)
+                    : "Upload canceled by HTTP transport: " + TransportExceptionDetails(exception);
+                result.Success = false;
+            }
+            catch (Exception exception)
+            {
+                result.CaughtException = "Upload failed: " + TransportExceptionDetails(exception);
+                result.Success = false;
+            }
+            LastResponse = result;
+            return result;
+        }
+
+        /// <summary>Uploads the .NET multipart serialization directly to curl's binary stdin.</summary>
+        /// <param name="endpoint">The API-relative POST endpoint.</param>
+        /// <param name="fieldName">The multipart file field.</param>
+        /// <param name="stream">The readable caller-owned stream.</param>
+        /// <param name="filename">The multipart filename.</param>
+        /// <param name="contentType">The validated MIME content type.</param>
+        /// <param name="cancellationToken">Caller cancellation.</param>
+        /// <returns>The response with the actual body, HTTP status and process diagnostics.</returns>
+        private async Task<ZulipResponse> DoZulipUploadCurl(
+            string endpoint, string fieldName, Stream stream, string filename, string contentType, CancellationToken cancellationToken)
+        {
+            ThrowIfDisposed();
+            TimeSpan timeout = UploadTimeout;
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(timeout);
+            using CancellationTokenSource serializer = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            ZulipResponse result = new ZulipResponse();
+            Process? process = null;
+            bool started = false;
+            bool receivedResponse = false;
+            Task? completion = null;
+            Task<(Exception? error, bool interrupted)>? write = null;
+            try
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                using MultipartFormDataContent multipart = CreateUploadContent(fieldName, stream, filename, contentType);
+                string suffix = "\nZULIP_UPLOAD_STATUS_" + Guid.NewGuid().ToString("N") + ":";
+                ProcessStartInfo start = BuildCurlStartInfo(HttpMethod.Post, endpoint, null);
+                start.RedirectStandardInput = true;
+                start.ArgumentList.Add("--http1.1");
+                start.ArgumentList.Add("--upload-file");
+                start.ArgumentList.Add(".");
+                start.ArgumentList.Add("--header");
+                start.ArgumentList.Add("Content-Type: " + multipart.Headers.ContentType);
+                start.ArgumentList.Add("--header");
+                start.ArgumentList.Add("Expect:");
+                long? length = multipart.Headers.ContentLength;
+                if (length.HasValue)
+                {
+                    start.ArgumentList.Add("--header");
+                    start.ArgumentList.Add("Content-Length: " + length.Value.ToString(CultureInfo.InvariantCulture));
+                    start.ArgumentList.Add("--header");
+                    start.ArgumentList.Add("Transfer-Encoding:");
+                }
+                start.ArgumentList.Add("--max-time");
+                start.ArgumentList.Add(timeout.TotalSeconds.ToString("0.#########", CultureInfo.InvariantCulture));
+                start.ArgumentList.Add("--write-out");
+                start.ArgumentList.Add(suffix + "%{http_code}");
+                process = new Process { StartInfo = start };
+                if (!process.Start()) throw new InvalidOperationException("Unable to start curl.");
+                started = true;
+
+                Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+                Task<string> stderr = process.StandardError.ReadToEndAsync();
+                Task exited = process.WaitForExitAsync();
+                Task received = Task.WhenAll(stdout, stderr, exited);
+                write = WriteCurlUploadAsync(multipart, process, serializer.Token);
+                completion = Task.WhenAll(received, write);
+                await exited.WaitAsync(deadline.Token);
+                Task stopSerializer = serializer.CancelAsync();
+                completion = Task.WhenAll(received, write, stopSerializer);
+                await received.WaitAsync(deadline.Token);
+                deadline.Token.ThrowIfCancellationRequested();
+
+                string output = await stdout;
+                string errors = await stderr;
+                int marker = output.LastIndexOf(suffix, StringComparison.Ordinal);
+                bool hasStatus = marker >= 0 && output.Length == marker + suffix.Length + 3 &&
+                    int.TryParse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+                int status = hasStatus
+                    ? int.Parse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture)
+                    : 0;
+                string body = marker >= 0 ? output.Substring(0, marker) : output;
+                result = ParseResponse(body, status);
+                receivedResponse = true;
+                if (!hasStatus || status == 0 || process.ExitCode != 0)
+                {
+                    string failure = process.ExitCode == 28
+                        ? UploadCancellationDetails(cancellationToken, timeout)
+                        : process.ExitCode != 0
+                            ? $"curl exited with code {process.ExitCode}: {errors.Trim()}"
+                            : "curl returned no HTTP upload status.";
+                    result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
+                        ? failure : result.CaughtException + " " + failure;
+                    result.Success = false;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                result.CaughtException = UploadCancellationDetails(cancellationToken, timeout);
+                result.Success = false;
+            }
+            catch (System.ComponentModel.Win32Exception exception)
+            {
+                result.CaughtException = "Unable to start curl: " + exception.Message;
+                result.Success = false;
+            }
+            catch (Exception exception)
+            {
+                result.CaughtException = "Upload failed: " + TransportExceptionDetails(exception);
+                result.Success = false;
+            }
+            finally
+            {
+                if (process != null)
+                {
+                    Task stopSerializer = serializer.CancelAsync();
+                    completion = completion == null ? stopSerializer : Task.WhenAll(completion, stopSerializer);
+                    string? cleanupError = started ? await CleanupCurlProcessAsync(process, completion, "Upload") : null;
+                    if (cleanupError != null)
+                    {
+                        result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
+                            ? cleanupError : result.CaughtException + " " + cleanupError;
+                        result.Success = false;
+                    }
+                    if (write != null)
+                    {
+                        string? writeFailure = null;
+                        if (!write.IsCompletedSuccessfully && receivedResponse)
+                        {
+                            writeFailure = "Upload incomplete: curl exited before multipart serialization completed.";
+                        }
+                        else if (write.IsCompletedSuccessfully)
+                        {
+                            (Exception? error, bool interrupted) outcome = write.Result;
+                            if (outcome.error != null && !outcome.interrupted)
+                                writeFailure = "Upload stream failed: " + TransportExceptionDetails(outcome.error);
+                            else if (outcome.interrupted && receivedResponse && result.HttpResponseCode is >= 200 and < 300)
+                                writeFailure = "Upload incomplete: curl exited before multipart serialization completed.";
+                        }
+                        if (writeFailure != null)
+                        {
+                            result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
+                                ? writeFailure : result.CaughtException + " " + writeFailure;
+                            result.Success = false;
+                        }
+                    }
+                    process.Dispose();
+                }
+            }
+            LastResponse = result;
+            return result;
+        }
+
+        /// <summary>Serializes multipart incrementally and always sends binary stdin EOF, even on early rejection.</summary>
+        /// <param name="multipart">The streaming multipart content.</param>
+        /// <param name="process">The exact child process receiving binary stdin.</param>
+        /// <param name="cancellationToken">The serializer deadline, also canceled when curl exits.</param>
+        /// <returns>A write failure and whether it was interrupted by the serializer token.</returns>
+        private static async Task<(Exception? error, bool interrupted)> WriteCurlUploadAsync(
+            MultipartFormDataContent multipart, Process process, CancellationToken cancellationToken)
+        {
+            Exception? failure = null;
+            bool interrupted = false;
+            try
+            {
+                // -F @- buffers stdin; -T - blocks response processing. -T . streams while observing early server responses.
+                await multipart.CopyToAsync(process.StandardInput.BaseStream, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+                interrupted = exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
+            }
+            finally
+            {
+                try { process.StandardInput.Close(); }
+                catch (Exception exception) { failure ??= exception; }
+            }
+            return (failure, interrupted);
+        }
+
+        /// <summary>Kills only the owned child process tree and bounds pipe/exit cleanup independently of caller cancellation.</summary>
+        /// <param name="process">The specific curl process.</param>
+        /// <param name="completion">The concurrent pipe drains, exit wait and optional upload serializer.</param>
+        /// <param name="operation">The operation label used in cleanup diagnostics.</param>
+        /// <returns>A cleanup failure, or null.</returns>
+        private static async Task<string?> CleanupCurlProcessAsync(Process process, Task? completion, string operation)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    try { process.Kill(entireProcessTree: true); }
+                    catch (InvalidOperationException) when (process.HasExited) { }
+                }
+                Task pending = completion ?? process.WaitForExitAsync();
+                await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                return null;
+            }
+            catch (TimeoutException)
+            {
+                if (completion != null)
+                    _ = completion.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                return operation + " process cleanup exceeded five seconds.";
+            }
+            catch (Exception exception)
+            {
+                return operation + " process cleanup failed: " + exception.Message;
+            }
+            finally
+            {
+                try
+                {
+                    if (process.StartInfo.RedirectStandardInput) process.StandardInput.Close();
+                }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
+            }
+        }
+
+        /// <summary>Parses a response envelope without losing its actual HTTP status or malformed body.</summary>
+        /// <param name="body">The actual response body without curl's write-out suffix.</param>
+        /// <param name="status">The actual HTTP response status.</param>
+        /// <returns>The completed response.</returns>
+        private static ZulipResponse ParseResponse(string body, int status)
+        {
+            ZulipResponse result;
+            try
+            {
+                result = JsonSerializer.Deserialize<ZulipResponse>(body)
+                    ?? throw new JsonException("The Zulip response must be a JSON object.");
+                result.Success = status is >= 200 and < 300 &&
+                    result.Result == ZulipResponse.ZulipResultSuccess && string.IsNullOrEmpty(result.CaughtException);
+            }
+            catch (JsonException exception)
+            {
+                result = new ZulipResponse { CaughtException = exception.Message, Success = false };
+            }
+            result.HttpResponseCode = status;
+            result.HttpResponseBody = body;
+            return result;
+        }
+
+        /// <summary>Distinguishes caller cancellation from the configured upload deadline without exposing invocation arguments.</summary>
+        /// <param name="cancellationToken">The caller's token.</param>
+        /// <param name="timeout">The configured timeout.</param>
+        /// <returns>The failure details.</returns>
+        private static string UploadCancellationDetails(CancellationToken cancellationToken, TimeSpan timeout) =>
+            cancellationToken.IsCancellationRequested
+                ? "Upload canceled."
+                : "Upload timed out after " + timeout.TotalSeconds.ToString(CultureInfo.InvariantCulture) + " seconds.";
+
+        /// <summary>Preserves underlying stream/transport failures without logging commands, arguments or credentials.</summary>
+        /// <param name="exception">The failed stream or transport operation.</param>
+        /// <returns>The exception messages, including wrapped I/O failures.</returns>
+        private static string TransportExceptionDetails(Exception exception)
+        {
+            string details = exception.Message;
+            Exception? inner = exception.InnerException;
+            for (int depth = 0; inner != null && depth < 4; depth++)
+            {
+                if (!string.Equals(exception.Message, inner.Message, StringComparison.Ordinal))
+                    details += " " + inner.Message;
+                inner = inner.InnerException;
+            }
+            return details;
+        }
+
         /// <summary>Executes the zulip request via curl.</summary>
         /// <param name="httpMethod"> The HTTP method.</param>
         /// <param name="relativeUrl">URL of the relative.</param>
         /// <param name="data">       The data.</param>
         /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
+        internal Task<ZulipResponse> DoZulipRequestCurl(
+            HttpMethod httpMethod,
+            string relativeUrl,
+            Dictionary<string, string>? data) =>
+            DoZulipRequestCurl(httpMethod, relativeUrl, data, null, CancellationToken.None);
+
+        /// <summary>Executes the ordinary production curl path with request-owned cancellation and optional start configuration.</summary>
+        /// <param name="httpMethod">The HTTP method.</param>
+        /// <param name="relativeUrl">The API-relative URL.</param>
+        /// <param name="data">Form or query parameters.</param>
+        /// <param name="configureStartInfo">Optional invocation configuration, used to isolate local fixtures.</param>
+        /// <param name="cancellationToken">The execution deadline; cleanup has an independent five-second bound.</param>
+        /// <returns>The response after the owned process and its pipes have been cleaned up.</returns>
         internal async Task<ZulipResponse> DoZulipRequestCurl(
             HttpMethod httpMethod,
             string relativeUrl,
-            Dictionary<string, string>? data)
+            Dictionary<string, string>? data,
+            Action<ProcessStartInfo>? configureStartInfo,
+            CancellationToken cancellationToken)
         {
-            ZulipResponse zulipResponse;
+            ThrowIfDisposed();
+            ZulipResponse zulipResponse = new ZulipResponse();
+            Process? proc = null;
+            bool started = false;
+            Task? completion = null;
 
             try
             {
-                Uri requestUri = new Uri(_siteUri, relativeUrl);
-
-                string args;
-
-                if (httpMethod == HttpMethod.Get && data != null && data.Count != 0)
-                {
-                    var query = string.Join("&", data.Select(
-                        kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
-                    requestUri = new Uri(requestUri + "?" + query);
-
-                    args =
-                        $"-X {httpMethod.Method.ToUpperInvariant()}" +
-                        $" {requestUri.AbsoluteUri}" +
-                        $" -u {_userEmail}:{_apiKey}";
-                }
-                else
-                {
-                    args =
-                        $"-X {httpMethod.Method.ToUpperInvariant()}" +
-                        $" {requestUri.AbsoluteUri}" +
-                        $" -u {_userEmail}:{_apiKey}";
-
-                    if (data != null)
+                cancellationToken.ThrowIfCancellationRequested();
+                ProcessStartInfo startInfo = BuildCurlStartInfo(httpMethod, relativeUrl, data);
+                string suffix = "\nZULIP_RESPONSE_STATUS_" + Guid.NewGuid().ToString("N") + ":";
+                startInfo.ArgumentList.Add("--write-out");
+                startInfo.ArgumentList.Add(suffix + "%{http_code}");
+                configureStartInfo?.Invoke(startInfo);
+                cancellationToken.ThrowIfCancellationRequested();
+                proc = new Process { StartInfo = startInfo };
+                if (!proc.Start()) throw new InvalidOperationException("Unable to start curl.");
+                started = true;
+                Task<string> bodyTask = proc.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = proc.StandardError.ReadToEndAsync();
+                completion = Task.WhenAll(bodyTask, errorTask, proc.WaitForExitAsync());
+                // Keep the drains alive for owned-process cleanup if the caller stops waiting.
+                await completion.WaitAsync(cancellationToken);
+                string output = await bodyTask;
+                string errors = await errorTask;
+                int marker = output.LastIndexOf(suffix, StringComparison.Ordinal);
+                bool hasStatus = marker >= 0 && output.Length == marker + suffix.Length + 3 &&
+                    int.TryParse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+                int status = hasStatus
+                    ? int.Parse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture)
+                    : 0;
+                string body = marker >= 0 ? output.Substring(0, marker) : output;
+                zulipResponse = hasStatus && status is >= 100 and <= 599
+                    ? ParseResponse(body, status)
+                    : new ZulipResponse
                     {
-                        foreach (KeyValuePair<string, string> kvp in data)
-                        {
-                            args += $" --data-urlencode \"{kvp.Key}={kvp.Value}\"";
-                        }
-                    }
-                }
+                        CaughtException = "curl did not return a valid HTTP status.",
+                        HttpResponseCode = status,
+                        HttpResponseBody = body,
+                        Success = false,
+                    };
 
-                ProcessStartInfo startInfo = new ProcessStartInfo()
+                if (proc.ExitCode != 0)
                 {
-                    FileName = _curlCommand,
-                    Arguments = args,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
+                    zulipResponse.CaughtException = $"curl exited with code {proc.ExitCode}: {errors}";
+                    zulipResponse.Success = false;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                zulipResponse = new ZulipResponse
+                {
+                    CaughtException = "curl request canceled.",
+                    Success = false,
                 };
-
-                Process proc = Process.Start(startInfo)!;
-                string body = await proc.StandardOutput.ReadToEndAsync();
-                string errors = await proc.StandardError.ReadToEndAsync();
-                await proc.WaitForExitAsync();
-
-                if (string.IsNullOrEmpty(body))
+            }
+            catch (System.ComponentModel.Win32Exception processEx)
+            {
+                zulipResponse = new ZulipResponse
                 {
-                    zulipResponse = new ZulipResponse();
-
-                    if (!string.IsNullOrEmpty(errors))
-                    {
-                        zulipResponse.CaughtException = errors;
-                    }
-                    else
-                    {
-                        zulipResponse.CaughtException = "curl returned no data!";
-                    }
-
-                    zulipResponse.Success = false;
-                    return zulipResponse;
-                }
-
-                if (body[0] != '{')
-                {
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = "curl returned non-JSON data!";
-                    zulipResponse.HttpResponseBody = body;
-                    zulipResponse.Success = false;
-                    return zulipResponse;
-                }
-
-                try
-                {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
-                    zulipResponse.Success = true;
-                }
-                catch (Exception parseEx)
-                {
-                    // ignore parse exceptions for now
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = parseEx.Message;
-                    zulipResponse.Success = false;
-                }
-
-                zulipResponse.HttpResponseCode = 0;
-                zulipResponse.HttpResponseBody = body;
+                    CaughtException = "Unable to start curl: " + processEx.Message,
+                    Success = false,
+                };
             }
             catch (HttpRequestException httpEx)
             {
-                Console.WriteLine($"ZulipClient <<< exception: {httpEx.Message}");
-                Console.WriteLine($"ZulipClient <<< inner: {httpEx.InnerException}");
                 zulipResponse = new ZulipResponse();
-                zulipResponse.CaughtException = httpEx.Message;
+                zulipResponse.CaughtException = TransportExceptionDetails(httpEx);
                 zulipResponse.Success = false;
             }
+            finally
+            {
+                if (proc != null)
+                {
+                    string? cleanupError = started ? await CleanupCurlProcessAsync(proc, completion, "curl") : null;
+                    if (cleanupError != null)
+                    {
+                        zulipResponse.CaughtException = string.IsNullOrEmpty(zulipResponse.CaughtException)
+                            ? cleanupError : zulipResponse.CaughtException + " " + cleanupError;
+                        zulipResponse.Success = false;
+                    }
+                    proc.Dispose();
+                }
+            }
 
+            LastResponse = zulipResponse;
             return zulipResponse;
+        }
+
+        /// <summary>Builds the production curl invocation with unambiguous argument boundaries.</summary>
+        /// <param name="httpMethod">The HTTP method.</param>
+        /// <param name="relativeUrl">The API-relative URL.</param>
+        /// <param name="data">Form or query parameters.</param>
+        /// <returns>The process start information.</returns>
+        internal ProcessStartInfo BuildCurlStartInfo(
+            HttpMethod httpMethod, string relativeUrl, Dictionary<string, string>? data)
+        {
+            Uri requestUri = new Uri(_siteUri, relativeUrl);
+            if (httpMethod == HttpMethod.Get && data != null && data.Count != 0)
+            {
+                string query = string.Join("&", data.Select(
+                    kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+                requestUri = new Uri(requestUri, "?" + query);
+            }
+
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = _curlCommand!,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-sS");
+            startInfo.ArgumentList.Add("-X");
+            startInfo.ArgumentList.Add(httpMethod.Method);
+            startInfo.ArgumentList.Add(requestUri.AbsoluteUri);
+            startInfo.ArgumentList.Add("-u");
+            startInfo.ArgumentList.Add(_userEmail + ":" + _apiKey);
+            if (httpMethod != HttpMethod.Get && data != null)
+            {
+                foreach (KeyValuePair<string, string> pair in data)
+                {
+                    startInfo.ArgumentList.Add("--data-urlencode");
+                    startInfo.ArgumentList.Add(pair.Key + "=" + pair.Value);
+                }
+            }
+
+            return startInfo;
         }
 
         /// <summary>Post this message.</summary>
@@ -490,63 +967,48 @@ namespace zulip_cs_lib
             string relativeUrl, 
             Dictionary<string, string>? data)
         {
+            ThrowIfDisposed();
             ZulipResponse zulipResponse;
 
             try
             {
                 Uri requestUri = new Uri(_siteUri, relativeUrl);
 
-                HttpRequestMessage request;
-
                 if (httpMethod == HttpMethod.Get && data != null && data.Count != 0)
                 {
-                    var query = string.Join("&", data.Select(
+                    string query = string.Join("&", data.Select(
                         kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
                     requestUri = new Uri(requestUri, "?" + query);
-                    request = new HttpRequestMessage(httpMethod, requestUri);
                 }
-                else
-                {
-                    request = new HttpRequestMessage(httpMethod, requestUri);
 
-                    if ((data != null) && (data.Count != 0))
-                    {
-                        request.Content = new FormUrlEncodedContent(data);
-                    }
+                using HttpRequestMessage request = new HttpRequestMessage(httpMethod, requestUri);
+                if (httpMethod != HttpMethod.Get && data != null && data.Count != 0)
+                {
+                    request.Content = new FormUrlEncodedContent(data);
                 }
 
                 request.Headers.Add("Authorization", _authHeader);
 
-                HttpResponseMessage response = await _httpClient!.SendAsync(request);
-
+                using HttpResponseMessage response = await _httpClient!.SendAsync(request);
                 string body = await response.Content.ReadAsStringAsync();
-
-                try
+                zulipResponse = ParseResponse(body, (int)response.StatusCode);
+            }
+            catch (OperationCanceledException exception)
+            {
+                zulipResponse = new ZulipResponse
                 {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)!;
-
-                    zulipResponse.Success = true;
-                }
-                catch (Exception parseEx)
-                {
-                    // ignore parse exceptions for now
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = parseEx.Message;
-                    zulipResponse.Success = false;
-                }
-
-                zulipResponse.HttpResponseCode = ((int)response.StatusCode);
-                zulipResponse.HttpResponseBody = body;
+                    CaughtException = "HTTP request timed out or was canceled: " + exception.Message,
+                    Success = false,
+                };
             }
             catch (HttpRequestException httpEx)
             {
-                Console.WriteLine($"ZulipClient <<< exception: {httpEx.Message}");
-                Console.WriteLine($"ZulipClient <<< inner: {httpEx.InnerException}");
                 zulipResponse = new ZulipResponse();
-                zulipResponse.CaughtException = httpEx.Message;
+                zulipResponse.CaughtException = TransportExceptionDetails(httpEx);
                 zulipResponse.Success = false;
             }
 
+            LastResponse = zulipResponse;
             return zulipResponse;
         }
     }

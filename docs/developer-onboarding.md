@@ -4,7 +4,8 @@ This guide is intended for developers joining `zulip-cs` and needing to become p
 
 ## 1. Prerequisites
 
-- .NET SDK capable of building `net8.0`, `net9.0`, and `net10.0` targets.
+- .NET 11 SDK (11.0.100 or a newer 11.0 feature band), selected by `global.json`. The primary target is `net11.0`, with continued support for `net10.0`, `net9.0`, and `net8.0`.
+- .NET 8, 9, and 10 runtimes to run tests for the older targets.
 - Access to a Zulip server and API credentials (for manual integration checks).
 - Git and a shell environment (PowerShell/bash).
 
@@ -23,21 +24,21 @@ Top-level:
 Run all operations from the repository root (where `zulip-cs.sln` lives):
 
 ```bash
-dotnet restore
-dotnet build
-dotnet test
+dotnet restore zulip-cs.sln
+dotnet build zulip-cs.sln
+dotnet test zulip-cs.sln
 ```
 
 Run one test class:
 
 ```bash
-dotnet test --filter "FullyQualifiedName~zulip_set_lib.tests.MessageTests"
+dotnet test zulip-cs.sln --filter "FullyQualifiedName~zulip_set_lib.tests.MessageTests"
 ```
 
 Run one test by full name:
 
 ```bash
-dotnet test --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Message_SendPrivate_EmailSingle"
+dotnet test zulip-cs.sln --filter "FullyQualifiedName=zulip_set_lib.tests.MessageTests.Message_SendPrivate_EmailSingle"
 ```
 
 ## 4. Configuration Model (`zuliprc`)
@@ -58,6 +59,9 @@ CLI lookup behavior:
 - Uses `--zuliprc` if provided.
 - Otherwise searches upward from the executable directory for `zuliprc`.
 - At each parent level also checks `secrets/zuliprc`.
+- Both candidates are checked at the filesystem root before exhaustion.
+
+The INI parser accepts `=` and `:` separators, choosing the first separator and preserving later separators in the value. For example, `key: abc=def` retains `abc=def`.
 
 ## 5. Development Workflow
 
@@ -76,6 +80,7 @@ CLI lookup behavior:
 - Public APIs are async and return `Task`-based results.
 - Resource classes do not own HTTP clients directly; they receive a request delegate from `ZulipClient`.
 - API/transport failures in `Try*` methods should surface as tuple failure details, not exceptions.
+- Ordinary HTTP timeout/cancellation failures refresh `LastResponse` and follow this Try contract. Ordinary request/response objects are disposed after materialization; injected clients remain caller-owned.
 
 ## 7. Suggested First Tasks for New Contributors
 
@@ -84,5 +89,6 @@ CLI lookup behavior:
 - Add/update corresponding documentation in this `docs/` folder.
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

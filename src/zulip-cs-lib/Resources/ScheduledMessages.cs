@@ -31,12 +31,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead(response, "ScheduledMessages.GetAll", "scheduled_messages", JsonValueKind.Array,
+                out List<ScheduledMessageObject>? messages, out string? details,
+                value => ResponsePayload.ValidateObjectIds(value, "scheduled_message_id")))
             {
-                return (true, null, response.ScheduledMessages ?? new List<ScheduledMessageObject>());
+                return (true, null, messages!);
             }
 
-            return (false, "ScheduledMessages.GetAll failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets all scheduled messages (throwing version).</summary>
@@ -76,12 +78,13 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, _endpoint, data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead(response, "ScheduledMessages.Create", "scheduled_message_id", JsonValueKind.Number,
+                out int scheduledMessageId, out string? details))
             {
-                return (true, null, response.ScheduledMessageId);
+                return (true, null, scheduledMessageId);
             }
 
-            return (false, "ScheduledMessages.Create failed: " + response.GetFailureMessage(), 0);
+            return (false, details, 0);
         }
 
         /// <summary>Creates a scheduled message (throwing version).</summary>
@@ -115,7 +118,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Patch, $"{_endpoint}/{scheduledMessageId}", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -138,7 +141,7 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{scheduledMessageId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }

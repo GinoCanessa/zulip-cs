@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace zulip_cs_lib.Resources
@@ -19,13 +20,41 @@ namespace zulip_cs_lib.Resources
         /// <summary>Whether this narrow is negated.</summary>
         private bool _negated;
 
+        /// <summary>The narrow wire representation without intermediate dictionaries.</summary>
+        private readonly struct NarrowPayload
+        {
+            /// <summary>Initializes the validated wire representation.</summary>
+            /// <param name="narrow">The narrow filter.</param>
+            internal NarrowPayload(Narrow narrow)
+            {
+                Operator = narrow.GetOperatorString();
+                Operand = narrow.GetOperandValue();
+                Negated = narrow._negated;
+            }
+
+            /// <summary>Gets the wire operator name.</summary>
+            [JsonPropertyName("operator")]
+            [JsonPropertyOrder(0)]
+            public string Operator { get; }
+
+            /// <summary>Gets the string, numeric or numeric-array operand.</summary>
+            [JsonPropertyName("operand")]
+            [JsonPropertyOrder(1)]
+            public object Operand { get; }
+
+            /// <summary>Gets whether the filter is negated.</summary>
+            [JsonPropertyName("negated")]
+            [JsonPropertyOrder(2)]
+            public bool Negated { get; }
+        }
+
         /// <summary>Values that represent narrow operators.</summary>
         public enum NarrowOperator
         {
             /// <summary>Search a specific channel.</summary>
             Channel,
 
-            /// <summary>Search all public channels.</summary>
+            /// <summary>Search public channels, or archived channels on feature level 489 and newer.</summary>
             Channels,
 
             /// <summary>Search within a specific topic.</summary>
@@ -171,7 +200,10 @@ namespace zulip_cs_lib.Resources
                 case NarrowOperator.IsUnread: return "unread";
                 case NarrowOperator.IsFollowed: return "followed";
                 case NarrowOperator.IsMuted: return "muted";
-                case NarrowOperator.Channels: return "public";
+                case NarrowOperator.Channels:
+                    if (_operand == null) return "public";
+                    if (_operand is string channels && channels is "public" or "archived") return channels;
+                    throw new ArgumentException("The channels operand must be 'public' or 'archived'.", "operand");
                 default: return _operand ?? string.Empty;
             }
         }
@@ -180,14 +212,7 @@ namespace zulip_cs_lib.Resources
         /// <returns>A JSON string representing this narrow filter.</returns>
         public string ToJson()
         {
-            var obj = new Dictionary<string, object>
-            {
-                { "operator", GetOperatorString() },
-                { "operand", GetOperandValue() },
-                { "negated", _negated }
-            };
-
-            return JsonSerializer.Serialize(obj);
+            return JsonSerializer.Serialize(new NarrowPayload(this));
         }
 
         /// <summary>Converts an array of narrows to a JSON array string.</summary>
@@ -200,16 +225,10 @@ namespace zulip_cs_lib.Resources
                 return "[]";
             }
 
-            var items = new List<Dictionary<string, object>>();
-
-            foreach (var narrow in narrows)
+            NarrowPayload[] items = new NarrowPayload[narrows.Length];
+            for (int index = 0; index < narrows.Length; index++)
             {
-                items.Add(new Dictionary<string, object>
-                {
-                    { "operator", narrow.GetOperatorString() },
-                    { "operand", narrow.GetOperandValue() },
-                    { "negated", narrow._negated }
-                });
+                items[index] = new NarrowPayload(narrows[index]);
             }
 
             return JsonSerializer.Serialize(items);

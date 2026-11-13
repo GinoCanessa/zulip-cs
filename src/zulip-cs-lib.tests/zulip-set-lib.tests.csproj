@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\zulip-cs-lib\zulip-cs-lib.csproj" />
+    <ProjectReference Include="..\zulip-cs-cli\zulip-cs-cli.csproj" />
   </ItemGroup>
 
 </Project>

@@ -8,7 +8,7 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib.Resources
 {
     /// <summary>Channels (streams) resource.</summary>
-    public class Channels
+    public partial class Channels
     {
         /// <summary>The streams API endpoint.</summary>
         private const string _streamsApiEndpoint = "api/v1/streams";
@@ -33,12 +33,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _streamsApiEndpoint, null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<StreamObject>>(response, "Channels.GetAll",
+                "streams", JsonValueKind.Array, out List<StreamObject>? streams, out string? details,
+                array => ResponsePayload.ValidateObjectIds(array, "stream_id")))
             {
-                return (true, null, response.Streams ?? new List<StreamObject>());
+                return (true, null, streams);
             }
 
-            return (false, "Channels.GetAll failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets all channels (throwing version).</summary>
@@ -57,12 +59,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<StreamObject>(response, "Channels.GetById",
+                "stream", JsonValueKind.Object, out StreamObject? stream, out string? details,
+                value => ResponsePayload.ValidateObjectId(value, "stream_id")))
             {
-                return (true, null, response.Stream);
+                return (true, null, stream);
             }
 
-            return (false, "Channels.GetById failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets a channel by stream ID (throwing version).</summary>
@@ -85,12 +89,13 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/get_stream_id", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<int>(response, "Channels.GetIdByName",
+                "stream_id", JsonValueKind.Number, out int streamId, out string? details))
             {
-                return (true, null, response.StreamId);
+                return (true, null, streamId);
             }
 
-            return (false, "Channels.GetIdByName failed: " + response.GetFailureMessage(), 0);
+            return (false, details, 0);
         }
 
         /// <summary>Gets the stream ID by channel name (throwing version).</summary>
@@ -101,6 +106,53 @@ namespace zulip_cs_lib.Resources
             return result.streamId;
         }
 
+        /// <summary>Creates a channel and returns its required identity without implicit discovery or subscription retries.</summary>
+        /// <param name="name">The new channel name.</param>
+        /// <param name="subscribers">The initial subscriber user IDs; an empty array is allowed.</param>
+        /// <param name="options">Optional initial settings; omitted values retain server defaults.</param>
+        /// <remarks>Requires feature level 417. The creation endpoint returns the identity as <c>id</c>, exposed here as streamId.</remarks>
+        /// <returns>The Try outcome and channel ID.</returns>
+        public async Task<(bool success, string? details, int streamId)> TryCreateWithId(
+            string name, int[] subscribers, ChannelCreationOptions? options = null)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return (false, "Channels.Create failed: name must be nonempty.", 0);
+            }
+            if (subscribers == null || !GroupOptions.ValidIds(subscribers))
+            {
+                return (false, "Channels.Create failed: subscribers must be an array of positive integer IDs.", 0);
+            }
+
+            Dictionary<string, string> data = new Dictionary<string, string>
+            {
+                { "name", name },
+                { "subscribers", JsonSerializer.Serialize(subscribers) }
+            };
+            string? inputError = options?.AddTo(data);
+            if (inputError != null) return (false, "Channels.Create failed: " + inputError, 0);
+
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/channels/create", data);
+            if (ResponsePayload.TryRead<int>(response, "Channels.Create",
+                "id", JsonValueKind.Number, out int streamId, out string? details))
+            {
+                return (true, null, streamId);
+            }
+            return (false, details, 0);
+        }
+
+        /// <summary>Creates a channel and returns its ID, throwing on an invalid response or request.</summary>
+        /// <param name="name">The new channel name.</param>
+        /// <param name="subscribers">The initial subscriber user IDs.</param>
+        /// <param name="options">Optional initial settings.</param>
+        /// <returns>The created channel ID.</returns>
+        public async Task<int> CreateWithId(string name, int[] subscribers, ChannelCreationOptions? options = null)
+        {
+            (bool success, string? details, int streamId) = await TryCreateWithId(name, subscribers, options);
+            if (!success) throw new Exception(details);
+            return streamId;
+        }
+
         /// <summary>Gets the current user's subscriptions.</summary>
         /// <remarks>Feature level 441: subscription payloads include updated channel-level permission group metadata.</remarks>
         /// <returns>An asynchronous result that yields (success, details, subscriptions).</returns>
@@ -108,12 +160,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, "api/v1/users/me/subscriptions", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<SubscriptionObject>>(response, "Channels.GetSubscriptions",
+                "subscriptions", JsonValueKind.Array, out List<SubscriptionObject>? subscriptions, out string? details,
+                array => ResponsePayload.ValidateObjectIds(array, "stream_id")))
             {
-                return (true, null, response.Subscriptions ?? new List<SubscriptionObject>());
+                return (true, null, subscriptions);
             }
 
-            return (false, "Channels.GetSubscriptions failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets the current user's subscriptions (throwing version).</summary>
@@ -122,6 +176,102 @@ namespace zulip_cs_lib.Resources
             var result = await TryGetSubscriptions();
             if (!result.success) throw new Exception(result.details);
             return result.subscriptions!;
+        }
+
+        /// <summary>Checks whether a user is subscribed to a channel.</summary>
+        /// <param name="userId">The target user ID.</param>
+        /// <param name="streamId">The channel ID.</param>
+        /// <remarks>Requires feature level 12; bot-user subscriptions can be queried at feature level 458.</remarks>
+        /// <returns>The Try outcome and actual subscription status, including false.</returns>
+        public async Task<(bool success, string? details, bool isSubscribed)> TryGetSubscriptionStatus(int userId, int streamId)
+        {
+            if (userId <= 0 || streamId <= 0)
+            {
+                return (false, "Channels.GetSubscriptionStatus failed: userId and streamId must be positive integers.", false);
+            }
+
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Get,
+                $"{_usersApiEndpoint}/{userId}/subscriptions/{streamId}", null);
+            if (ResponsePayload.TryRead<JsonElement>(response, "Channels.GetSubscriptionStatus",
+                null, JsonValueKind.Object, out JsonElement payload, out string? details, root =>
+                    root.TryGetProperty("is_subscribed", out JsonElement value) &&
+                    value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                        ? null : "required field 'is_subscribed' must be Boolean."))
+            {
+                return (true, null, payload.GetProperty("is_subscribed").GetBoolean());
+            }
+            return (false, details, false);
+        }
+
+        /// <summary>Checks subscription status, throwing on request or payload failure.</summary>
+        /// <param name="userId">The target user ID.</param>
+        /// <param name="streamId">The channel ID.</param>
+        /// <returns>Whether the user is subscribed.</returns>
+        public async Task<bool> GetSubscriptionStatus(int userId, int streamId)
+        {
+            (bool success, string? details, bool isSubscribed) = await TryGetSubscriptionStatus(userId, streamId);
+            if (!success) throw new Exception(details);
+            return isSubscribed;
+        }
+
+        /// <summary>Updates typed personal subscription properties in one bulk request.</summary>
+        /// <param name="changes">The property changes; an empty list is sent as an empty array.</param>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryUpdateSubscriptionSettings(
+            IReadOnlyList<SubscriptionPropertyChange> changes)
+        {
+            if (changes == null) return (false, "Channels.UpdateSubscriptionSettings failed: changes must be an array.");
+            foreach (SubscriptionPropertyChange change in changes)
+            {
+                string? error = change == null ? "changes must not contain null." : change.Validate();
+                if (error != null) return (false, "Channels.UpdateSubscriptionSettings failed: " + error);
+            }
+
+            Dictionary<string, string> data = new Dictionary<string, string>
+            {
+                { "subscription_data", JsonSerializer.Serialize(changes) }
+            };
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post,
+                $"{_usersApiEndpoint}/me/subscriptions/properties", data);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Channels.UpdateSubscriptionSettings failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Updates typed personal subscription properties, throwing on failure.</summary>
+        /// <param name="changes">The property changes.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task UpdateSubscriptionSettings(IReadOnlyList<SubscriptionPropertyChange> changes)
+        {
+            (bool success, string? details) = await TryUpdateSubscriptionSettings(changes);
+            if (!success) throw new Exception(details);
+        }
+
+        /// <summary>Updates one personal subscription property using the single-channel PATCH endpoint.</summary>
+        /// <param name="change">The channel, property and typed new value.</param>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryUpdateSubscriptionProperty(SubscriptionPropertyChange change)
+        {
+            string? error = change == null ? "change must not be null." : change.Validate();
+            if (error != null) return (false, "Channels.UpdateSubscriptionProperty failed: " + error);
+
+            Dictionary<string, string> data = new Dictionary<string, string>
+            {
+                { "property", change!.PropertyName },
+                { "value", change.Property == SubscriptionProperty.Color ? change.Value.GetString()! : change.Value.GetRawText() }
+            };
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Patch,
+                $"{_usersApiEndpoint}/me/subscriptions/{change.StreamId}", data);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Channels.UpdateSubscriptionProperty failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Updates one personal subscription property, throwing on failure.</summary>
+        /// <param name="change">The channel, property and typed new value.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task UpdateSubscriptionProperty(SubscriptionPropertyChange change)
+        {
+            (bool success, string? details) = await TryUpdateSubscriptionProperty(change);
+            if (!success) throw new Exception(details);
         }
 
         /// <summary>Subscribes to channels.</summary>
@@ -137,7 +287,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/users/me/subscriptions", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -165,7 +315,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, "api/v1/users/me/subscriptions", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -188,12 +338,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_usersApiEndpoint}/me/{streamId}/topics", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<TopicObject>>(response, "Channels.GetTopics",
+                "topics", JsonValueKind.Array, out List<TopicObject>? topics, out string? details,
+                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
             {
-                return (true, null, response.Topics ?? new List<TopicObject>());
+                return (true, null, topics);
             }
 
-            return (false, "Channels.GetTopics failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>The users API endpoint for topic queries.</summary>
@@ -215,12 +367,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}/members", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<int>>(response, "Channels.GetSubscribers",
+                "subscribers", JsonValueKind.Array, out List<int>? subscribers, out string? details))
             {
-                return (true, null, response.Subscribers ?? new List<int>());
+                return (true, null, subscribers);
             }
 
-            return (false, "Channels.GetSubscribers failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets subscribers of a stream (throwing version).</summary>
@@ -258,7 +411,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Patch, $"{_streamsApiEndpoint}/{streamId}", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -281,7 +434,7 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_streamsApiEndpoint}/{streamId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -304,12 +457,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_streamsApiEndpoint}/{streamId}/email_address", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<string>(response, "Channels.GetEmailAddress",
+                "email", JsonValueKind.String, out string? email, out string? details,
+                value => string.IsNullOrWhiteSpace(value.GetString()) ? "required field 'email' must be nonempty." : null))
             {
-                return (true, null, response.EmailAddress);
+                return (true, null, email);
             }
 
-            return (false, "Channels.GetEmailAddress failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets email address for a stream (throwing version).</summary>
@@ -327,6 +482,19 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryDeleteTopic(int streamId, string topicName)
         {
+            var result = await TryDeleteTopicBatch(streamId, topicName);
+            return result.success
+                ? result.batch!.ToCompletionResult("Channels.DeleteTopic", nameof(TryDeleteTopicBatch))
+                : (false, result.details);
+        }
+
+        /// <summary>Deletes one topic batch without automatically repeating partial work.</summary>
+        /// <param name="streamId">The channel ID.</param>
+        /// <param name="topicName">The topic name.</param>
+        /// <returns>The Try outcome and explicit completion state.</returns>
+        public async Task<(bool success, string? details, BatchOperationResult? batch)> TryDeleteTopicBatch(
+            int streamId, string topicName)
+        {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "topic_name", topicName }
@@ -334,12 +502,18 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_streamsApiEndpoint}/{streamId}/delete_topic", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
-            {
-                return (true, null);
-            }
+            return BatchOperationResult.Read(response, "Channels.DeleteTopic");
+        }
 
-            return (false, "Channels.DeleteTopic failed: " + response.GetFailureMessage());
+        /// <summary>Deletes one topic batch, throwing on request failure but returning partial completion.</summary>
+        /// <param name="streamId">The channel ID.</param>
+        /// <param name="topicName">The topic name.</param>
+        /// <returns>The batch outcome; callers control continuation.</returns>
+        public async Task<BatchOperationResult> DeleteTopicBatch(int streamId, string topicName)
+        {
+            var result = await TryDeleteTopicBatch(streamId, topicName);
+            if (!result.success) throw new Exception(result.details);
+            return result.batch!;
         }
 
         /// <summary>Deletes a topic (throwing version).</summary>
@@ -361,7 +535,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/default_streams", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -388,7 +562,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, "api/v1/default_streams", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -403,13 +577,49 @@ namespace zulip_cs_lib.Resources
             if (!result.success) throw new Exception(result.details);
         }
 
+        /// <summary>Updates the current user's visibility policy for one channel/topic pair.</summary>
+        /// <param name="streamId">The channel ID.</param>
+        /// <param name="topic">The topic name; empty topics require feature level 334.</param>
+        /// <param name="policy">The policy to set, or None to remove a previous policy.</param>
+        /// <remarks>Requires feature level 170; Followed requires feature level 219. No messages need to exist in the topic.</remarks>
+        /// <returns>The Try outcome.</returns>
+        public async Task<(bool success, string? details)> TryUpdateTopicVisibility(
+            int streamId, string topic, TopicVisibilityPolicy policy)
+        {
+            if (streamId <= 0 || topic == null || (int)policy is < 0 or > 3)
+            {
+                return (false, "Channels.UpdateTopicVisibility failed: a positive streamId, topic and visibility policy 0-3 are required.");
+            }
+            Dictionary<string, string> data = new Dictionary<string, string>
+            {
+                { "stream_id", streamId.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                { "topic", topic },
+                { "visibility_policy", ((int)policy).ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            };
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/user_topics", data);
+            return ResponsePayload.IsSuccessful(response)
+                ? (true, null) : (false, "Channels.UpdateTopicVisibility failed: " + response.GetFailureMessage());
+        }
+
+        /// <summary>Updates a personal topic visibility policy, throwing on failure.</summary>
+        /// <param name="streamId">The channel ID.</param>
+        /// <param name="topic">The topic name.</param>
+        /// <param name="policy">The policy to set.</param>
+        /// <returns>An asynchronous result.</returns>
+        public async Task UpdateTopicVisibility(int streamId, string topic, TopicVisibilityPolicy policy)
+        {
+            (bool success, string? details) = await TryUpdateTopicVisibility(streamId, topic, policy);
+            if (!success) throw new Exception(details);
+        }
+
         /// <summary>Updates topic muting.</summary>
         /// <param name="stream">The stream name.</param>
         /// <param name="topic">The topic name.</param>
         /// <param name="op">The operation (add or remove).</param>
         /// <remarks>
         /// Feature level 170: topic muting support exists via this endpoint.
-        /// Newer Zulip API uses <c>POST /user_topics</c>; this wrapper currently targets the older muted-topics route.
+        /// Retained for compatibility. Prefer <see cref="UpdateTopicVisibility"/> with <c>POST /user_topics</c>,
+        /// which also supports explicit unmuting and following.
         /// </remarks>
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryUpdateTopicMuting(string stream, string topic, string op)
@@ -423,7 +633,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Patch, "api/v1/users/me/subscriptions/muted_topics", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }

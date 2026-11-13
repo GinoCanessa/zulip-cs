@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace zulip_cs_lib.Models
@@ -78,5 +79,52 @@ namespace zulip_cs_lib.Models
         /// <summary>Gets or sets a value indicating whether this is me message.</summary>
         [JsonPropertyName("is_me_message")]
         public bool? IsMeMessage { get; set; }
+
+        /// <summary>Gets or sets reactions, ordered from oldest to newest.</summary>
+        [JsonPropertyName("reactions")]
+        public List<MessageReactionObject>? Reactions { get; set; }
+
+        /// <summary>Gets or sets edits and moves, ordered from newest to oldest.</summary>
+        /// <remarks>May be absent when unmodified or when edit history access is disabled.</remarks>
+        [JsonPropertyName("edit_history")]
+        public List<MessageHistoryObject>? EditHistory { get; set; }
+
+        /// <summary>Gets or sets the last content edit time in UNIX UTC seconds.</summary>
+        /// <remarks>Absent when content was never edited. Before feature level 365 this also included moves.</remarks>
+        [JsonPropertyName("last_edit_timestamp")]
+        public long? LastEditTimestamp { get; set; }
+
+        /// <summary>Gets or sets the last channel or topic move time in UNIX UTC seconds.</summary>
+        /// <remarks>Absent when never moved; resolving or unresolving a topic alone does not set this value.</remarks>
+        [JsonPropertyName("last_moved_timestamp")]
+        public long? LastMovedTimestamp { get; set; }
+
+        /// <summary>Gets or sets owned JSON fields not modeled by this client.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement> AdditionalProperties { get; set; } = [];
+    }
+
+    /// <summary>Represents a reaction to a message, including its emoji namespace and reacting user.</summary>
+    public class MessageReactionObject
+    {
+        /// <summary>Gets or sets the emoji name.</summary>
+        [JsonPropertyName("emoji_name")]
+        public string? EmojiName { get; set; }
+
+        /// <summary>Gets or sets the emoji identifier within its reaction type namespace.</summary>
+        [JsonPropertyName("emoji_code")]
+        public string? EmojiCode { get; set; }
+
+        /// <summary>Gets or sets the emoji namespace, such as unicode_emoji, realm_emoji or zulip_extra_emoji.</summary>
+        [JsonPropertyName("reaction_type")]
+        public string? ReactionType { get; set; }
+
+        /// <summary>Gets or sets the user ID of the person who added the reaction.</summary>
+        [JsonPropertyName("user_id")]
+        public int UserId { get; set; }
+
+        /// <summary>Gets or sets owned JSON fields not modeled by this client.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement> AdditionalProperties { get; set; } = [];
     }
 }

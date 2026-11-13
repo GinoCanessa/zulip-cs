@@ -12,7 +12,7 @@ zulip-cs-cli [command] [options]
 
 | Option | Required | Description |
 |---|---|---|
-| `--zuliprc <path>` | No | Path to the Zulip INI file. If omitted, CLI auto-searches for `zuliprc` or `secrets/zuliprc` upward from executable directory. |
+| `--zuliprc <path>` | No | Path to the Zulip INI file. If omitted, CLI auto-searches for `zuliprc` or `secrets/zuliprc` upward from executable directory, including the filesystem root. |
 
 ## Commands
 
@@ -32,18 +32,19 @@ Notes:
 
 ### 2. `send-stream`
 
-Send a message to one or more streams/channels.
+Send a message to exactly one stream/channel.
 
 | Option | Required | Description |
 |---|---|---|
 | `--message <text>` | Yes | Message content. |
 | `--topic <topic>` | Yes | Stream topic. |
-| `--streams <csv>` | Conditional | Comma-separated stream names. |
-| `--stream-ids <csv>` | Conditional | Comma-separated stream IDs. |
+| `--streams <name>` | Conditional | One literal stream name, including any commas. |
+| `--stream-ids <id>` | Conditional | One stream ID; multiple IDs are rejected by the library. |
 
 Notes:
 
 - One of `--streams` or `--stream-ids` must be provided.
+- For example, `--streams "general,random"` addresses one channel with that literal name, not two destinations.
 
 ### 3. `edit-message`
 
@@ -81,9 +82,11 @@ Fetch multiple messages and output JSON.
 | Option | Required | Description |
 |---|---|---|
 | `--anchor <value>` | No | `newest`, `oldest`, `first_unread`, or numeric message ID (default: `newest`). |
+| `--stream-id <id>` | No | Signed Int64 channel filter. Supplied malformed or overflowing values fail instead of removing the filter. |
 | `--num-before <n>` | No | Number of messages before anchor (default: `0`). |
 | `--num-after <n>` | No | Number of messages after anchor (default: `0`). |
 | `--apply-markdown <bool>` | No | Whether server should apply markdown rendering. |
+| `--include-anchor <bool>` | No | Whether to include the anchor message. |
 
 ### 7. `add-emoji`
 
@@ -168,7 +171,10 @@ Fetch read receipt user IDs as JSON.
 
 - Success path: command returns exit code `0`.
 - Failure path: command writes to stderr and sets non-zero exit code.
+- `--op` accepts only case-insensitive `add`/`remove`; `--propagate-mode` accepts only `one`/`later`/`all` and defaults to `one` when omitted. Numeric/composite enum values and invalid supplied values are rejected.
+- Invalid operation, propagation, and stream-filter arguments fail during parsing, before configuration loading or client creation. Supplied options require their argument; omitted optional filters retain their defaults.
 
 ---
-Generated on: 2026-04-07  
-Published version: 0.0.1-beta.4
+Updated on: 2026-11-13
+
+Documentation version: 1.0.0

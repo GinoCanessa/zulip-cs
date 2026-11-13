@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -17,6 +18,13 @@ public static class Program
     /// <param name="args">Command-line arguments.</param>
     /// <returns>Exit code.</returns>
     static async Task<int> Main(string[] args)
+    {
+        return await BuildRootCommand().Parse(args).InvokeAsync();
+    }
+
+    /// <summary>Builds the production command tree without invoking any actions.</summary>
+    /// <returns>The configured root command.</returns>
+    internal static RootCommand BuildRootCommand()
     {
         Option<string> zuliprcOption = new("--zuliprc") { Description = "Path to the zuliprc configuration file." };
 
@@ -40,7 +48,7 @@ public static class Program
         rootCommand.Subcommands.Add(BuildMarkTopicReadCommand(zuliprcOption));
         rootCommand.Subcommands.Add(BuildGetReadReceiptsCommand(zuliprcOption));
 
-        return await rootCommand.Parse(args).InvokeAsync();
+        return rootCommand;
     }
 
     /// <summary>Creates a ZulipClient from the resolved zuliprc path.</summary>
@@ -126,8 +134,8 @@ public static class Program
     {
         Option<string> messageOpt = new("--message") { Description = "Message content.", Required = true };
         Option<string> topicOpt = new("--topic") { Description = "Stream topic.", Required = true };
-        Option<string> streamsOpt = new("--streams") { Description = "Comma-separated stream names." };
-        Option<string> streamIdsOpt = new("--stream-ids") { Description = "Comma-separated stream IDs." };
+        Option<string> streamsOpt = new("--streams") { Description = "One literal stream name (including any commas)." };
+        Option<string> streamIdsOpt = new("--stream-ids") { Description = "One stream ID." };
 
         Command cmd = new("send-stream", "Send a message to a stream/channel.");
         cmd.Options.Add(messageOpt);
@@ -149,8 +157,7 @@ public static class Program
 
             if (!string.IsNullOrEmpty(streams))
             {
-                string[] streamArr = streams.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                result = await client.Messages.TrySendStream(message!, topic!, streamArr);
+                result = await client.Messages.TrySendStream(message!, topic!, streams);
             }
             else if (!string.IsNullOrEmpty(streamIds))
             {
@@ -189,7 +196,13 @@ public static class Program
         Option<string> contentOpt = new("--content") { Description = "New message content." };
         Option<string> topicOpt = new("--topic") { Description = "New topic." };
         Option<int?> moveToStreamOpt = new("--move-to-stream-id") { Description = "Stream ID to move the message to." };
-        Option<string> propagateOpt = new("--propagate-mode") { Description = "Propagate mode: one, later, or all.", DefaultValueFactory = _ => "one" };
+        Option<Messages.EditPropagateMode> propagateOpt = new("--propagate-mode")
+        {
+            Description = "Propagate mode: one, later, or all.",
+            Arity = ArgumentArity.ExactlyOne,
+            DefaultValueFactory = _ => Messages.EditPropagateMode.One,
+            CustomParser = ParsePropagateMode,
+        };
 
         Command cmd = new("edit-message", "Edit an existing message.");
         cmd.Options.Add(messageIdOpt);
@@ -205,14 +218,7 @@ public static class Program
             string? content = parseResult.GetValue(contentOpt);
             string? topic = parseResult.GetValue(topicOpt);
             int? moveToStream = parseResult.GetValue(moveToStreamOpt);
-            string? propagate = parseResult.GetValue(propagateOpt);
-
-            Messages.EditPropagateMode mode = propagate?.ToLowerInvariant() switch
-            {
-                "later" => Messages.EditPropagateMode.Later,
-                "all" => Messages.EditPropagateMode.All,
-                _ => Messages.EditPropagateMode.One,
-            };
+            Messages.EditPropagateMode mode = parseResult.GetValue(propagateOpt);
 
             ZulipClient client = CreateClient(zuliprc);
 
@@ -312,7 +318,11 @@ public static class Program
     /// <summary>Builds the get-messages command.</summary>
     private static Command BuildGetMessagesCommand(Option<string> zuliprcOption)
     {
-        Option<string> streamIdOpt = new("--stream-id") { Description = "Stream ID to filter messages." };
+        Option<long?> streamIdOpt = new("--stream-id")
+        {
+            Description = "Stream ID to filter messages.",
+            Arity = ArgumentArity.ExactlyOne,
+        };
         Option<string> anchorOpt = new("--anchor") { Description = "Anchor: newest, oldest, first_unread, or a message ID.", DefaultValueFactory = _ => "newest" };
         Option<int> numBeforeOpt = new("--num-before") { Description = "Number of messages before the anchor.", DefaultValueFactory = _ => 0 };
         Option<int> numAfterOpt = new("--num-after") { Description = "Number of messages after the anchor.", DefaultValueFactory = _ => 0 };
@@ -330,7 +340,7 @@ public static class Program
         cmd.SetAction(async (ParseResult parseResult) =>
         {
             string? zuliprc = parseResult.GetValue(zuliprcOption);
-            string? streamIdValue = parseResult.GetValue(streamIdOpt);
+            long? streamId = parseResult.GetValue(streamIdOpt);
             string? anchor = parseResult.GetValue(anchorOpt);
             int numBefore = parseResult.GetValue(numBeforeOpt);
             int numAfter = parseResult.GetValue(numAfterOpt);
@@ -361,10 +371,9 @@ public static class Program
             ZulipClient client = CreateClient(zuliprc);
 
             Narrow[] narrows;
-            if (!string.IsNullOrEmpty(streamIdValue) &&
-                long.TryParse(streamIdValue, out long streamId))
+            if (streamId.HasValue)
             {
-                narrows = [new Narrow(Narrow.NarrowOperator.Channel, streamId)];
+                narrows = [new Narrow(Narrow.NarrowOperator.Channel, streamId.Value)];
             }
             else
             {
@@ -525,7 +534,13 @@ public static class Program
     private static Command BuildUpdateFlagsCommand(Option<string> zuliprcOption)
     {
         Option<string> messageIdsOpt = new("--message-ids") { Description = "Comma-separated message IDs.", Required = true };
-        Option<string> opOpt = new("--op") { Description = "Operation: add or remove.", Required = true };
+        Option<Messages.FlagOperation> opOpt = new("--op")
+        {
+            Description = "Operation: add or remove.",
+            Required = true,
+            Arity = ArgumentArity.ExactlyOne,
+            CustomParser = ParseFlagOperation,
+        };
         Option<string> flagOpt = new("--flag") { Description = "Flag name (e.g., read, starred).", Required = true };
 
         Command cmd = new("update-flags", "Update personal message flags.");
@@ -537,16 +552,12 @@ public static class Program
         {
             string? zuliprc = parseResult.GetValue(zuliprcOption);
             string? messageIdsStr = parseResult.GetValue(messageIdsOpt);
-            string? op = parseResult.GetValue(opOpt);
+            Messages.FlagOperation operation = parseResult.GetValue(opOpt);
             string? flag = parseResult.GetValue(flagOpt);
 
             ulong[] messageIds = messageIdsStr!
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(ulong.Parse).ToArray();
-
-            Messages.FlagOperation operation = op?.ToLowerInvariant() == "remove"
-                ? Messages.FlagOperation.Remove
-                : Messages.FlagOperation.Add;
 
             ZulipClient client = CreateClient(zuliprc);
 
@@ -744,6 +755,57 @@ public static class Program
 
     // ── Utilities ────────────────────────────────────────────────────────
 
+    /// <summary>Parses an exact, case-insensitive flag operation token.</summary>
+    /// <param name="result">The supplied option argument.</param>
+    /// <returns>The requested flag operation, or an unused default on error.</returns>
+    private static Messages.FlagOperation ParseFlagOperation(ArgumentResult result)
+    {
+        if (result.Tokens.Count == 1)
+        {
+            string value = result.Tokens[0].Value;
+            if (string.Equals(value, "add", StringComparison.OrdinalIgnoreCase))
+            {
+                return Messages.FlagOperation.Add;
+            }
+
+            if (string.Equals(value, "remove", StringComparison.OrdinalIgnoreCase))
+            {
+                return Messages.FlagOperation.Remove;
+            }
+        }
+
+        result.AddError("--op requires add or remove.");
+        return default;
+    }
+
+    /// <summary>Parses an exact, case-insensitive propagation mode token.</summary>
+    /// <param name="result">The supplied option argument.</param>
+    /// <returns>The requested propagation mode, or an unused default on error.</returns>
+    private static Messages.EditPropagateMode ParsePropagateMode(ArgumentResult result)
+    {
+        if (result.Tokens.Count == 1)
+        {
+            string value = result.Tokens[0].Value;
+            if (string.Equals(value, "one", StringComparison.OrdinalIgnoreCase))
+            {
+                return Messages.EditPropagateMode.One;
+            }
+
+            if (string.Equals(value, "later", StringComparison.OrdinalIgnoreCase))
+            {
+                return Messages.EditPropagateMode.Later;
+            }
+
+            if (string.Equals(value, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                return Messages.EditPropagateMode.All;
+            }
+        }
+
+        result.AddError("--propagate-mode requires one, later, or all.");
+        return default;
+    }
+
     /// <summary>Searches for the first zulip RC file.</summary>
     /// <exception cref="DirectoryNotFoundException">Thrown when the requested directory is not
     ///  present.</exception>
@@ -751,29 +813,40 @@ public static class Program
     /// <returns>The found zulip RC file path.</returns>
     public static string FindZulipRC(string startingDir)
     {
-        string currentDir = startingDir;
-        string filePath = Path.Combine(currentDir, "zuliprc");
+        return FindZulipRC(startingDir, File.Exists);
+    }
 
-        while (!File.Exists(filePath))
+    /// <summary>Searches current and ancestor directories using an isolated existence check.</summary>
+    /// <param name="startingDir">The starting directory, normalized before searching.</param>
+    /// <param name="fileExists">Checks whether a candidate configuration file exists.</param>
+    /// <returns>The first configuration file path found.</returns>
+    /// <exception cref="DirectoryNotFoundException">Thrown when no candidate exists.</exception>
+    internal static string FindZulipRC(string startingDir, Func<string, bool> fileExists)
+    {
+        string currentDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(startingDir));
+
+        while (true)
         {
-            // check for /secrets/.zuliprc
+            string filePath = Path.Combine(currentDir, "zuliprc");
+            if (fileExists(filePath))
+            {
+                return filePath;
+            }
+
             string pathInSubdir = Path.Combine(currentDir, "secrets", "zuliprc");
 
-            if (File.Exists(pathInSubdir))
+            if (fileExists(pathInSubdir))
             {
                 return pathInSubdir;
             }
 
-            currentDir = Path.GetFullPath(Path.Combine(currentDir, ".."));
-
-            if (currentDir == Path.GetPathRoot(currentDir))
+            string? parentDir = Directory.GetParent(currentDir)?.FullName;
+            if (parentDir == null)
             {
                 throw new DirectoryNotFoundException("Could not find zuliprc in path!");
             }
 
-            filePath = Path.Combine(currentDir, "zuliprc");
+            currentDir = parentDir;
         }
-
-        return filePath;
     }
 }

@@ -10,7 +10,7 @@ using zulip_cs_lib.Models;
 namespace zulip_cs_lib.Resources
 {
     /// <summary>A zulip client messages.</summary>
-    public class Messages
+    public partial class Messages
     {
         /// <summary>The message API endpoint.</summary>
         private const string _messageApiEndpoint = "api/v1/messages";
@@ -95,7 +95,7 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_messageApiEndpoint}/{messageId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -204,7 +204,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Patch, $"{_messageApiEndpoint}/{messageId}", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -272,7 +272,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_messageApiEndpoint}/{messageId}/reactions", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -342,7 +342,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_messageApiEndpoint}/{messageId}/reactions", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -378,12 +378,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await Send(message, null, ZulipMessageType.Direct, userEmails);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<ulong>(response, "Messages.SendPrivate",
+                "id", JsonValueKind.Number, out ulong id, out string? details))
             {
-                return (true, null, response.Id ?? 0);
+                return (true, null, id);
             }
 
-            return (false, "Messages.SendPrivate failed: " + response.GetFailureMessage(), 0);
+            return (false, details, 0);
         }
 
         /// <summary>Sends a private message.</summary>
@@ -412,12 +413,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await Send(message, null, ZulipMessageType.Direct, userIds);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<ulong>(response, "Messages.SendPrivate",
+                "id", JsonValueKind.Number, out ulong id, out string? details))
             {
-                return (true, null, response.Id ?? 0);
+                return (true, null, id);
             }
 
-            return (false, "Messages.SendPrivate failed: " + response.GetFailureMessage(), 0);
+            return (false, details, 0);
         }
 
         /// <summary>Sends a stream message.</summary>
@@ -449,14 +451,20 @@ namespace zulip_cs_lib.Resources
             string topic,
             params string[] streamNames)
         {
-            ZulipResponse response = await Send(message, topic, ZulipMessageType.Channel, streamNames);
-
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (streamNames == null || streamNames.Length != 1 || string.IsNullOrWhiteSpace(streamNames[0]))
             {
-                return (true, null, response.Id ?? 0);
+                return (false, "Messages.SendStream failed: Provide exactly one channel name.", 0);
             }
 
-            return (false, "Messages.SendStream failed: " + response.GetFailureMessage(), 0);
+            ZulipResponse response = await Send(message, topic, ZulipMessageType.Channel, streamNames);
+
+            if (ResponsePayload.TryRead<ulong>(response, "Messages.SendStream",
+                "id", JsonValueKind.Number, out ulong id, out string? details))
+            {
+                return (true, null, id);
+            }
+
+            return (false, details, 0);
         }
 
         /// <summary>Sends a stream message.</summary>
@@ -485,14 +493,20 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details, messageId).</returns>
         public async Task<(bool success, string? details, ulong messageId)> TrySendStream(string message, string topic, params int[] streamIds)
         {
-            ZulipResponse response = await Send(message, topic, ZulipMessageType.Channel, streamIds);
-
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (streamIds == null || streamIds.Length != 1)
             {
-                return (true, null, response.Id ?? 0);
+                return (false, "Messages.SendStream failed: Provide exactly one channel ID.", 0);
             }
 
-            return (false, "Messages.SendStream failed: " + response.GetFailureMessage(), 0);
+            ZulipResponse response = await Send(message, topic, ZulipMessageType.Channel, streamIds);
+
+            if (ResponsePayload.TryRead<ulong>(response, "Messages.SendStream",
+                "id", JsonValueKind.Number, out ulong id, out string? details))
+            {
+                return (true, null, id);
+            }
+
+            return (false, details, 0);
         }
 
         /// <summary>Gets messages matching the given criteria.</summary>
@@ -566,12 +580,14 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _messageApiEndpoint, data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<MessageObject>>(response, "Messages.Get",
+                "messages", JsonValueKind.Array, out List<MessageObject>? messages, out string? details,
+                array => ResponsePayload.ValidateObjectIds(array, "id"), response.TakeUnobservedMessages))
             {
-                return (true, null, response.Messages ?? new List<MessageObject>(), response.FoundNewest, response.FoundOldest);
+                return (true, null, messages, response.FoundNewest, response.FoundOldest);
             }
 
-            return (false, "Messages.Get failed: " + response.GetFailureMessage(), null, null, null);
+            return (false, details, null, null, null);
         }
 
         /// <summary>Gets messages (throwing version).</summary>
@@ -622,12 +638,14 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_messageApiEndpoint}/{messageId}", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<MessageObject>(response, "Messages.GetSingle",
+                "message", JsonValueKind.Object, out MessageObject? message, out string? details,
+                value => ResponsePayload.ValidateObjectId(value, "id")))
             {
-                return (true, null, response.MessageObject, response.RawContent);
+                return (true, null, message, response.RawContent);
             }
 
-            return (false, "Messages.GetSingle failed: " + response.GetFailureMessage(), null, null);
+            return (false, details, null, null);
         }
 
         /// <summary>Fetches a single message by ID (throwing version).</summary>
@@ -651,21 +669,41 @@ namespace zulip_cs_lib.Resources
         /// <summary>Renders a message to HTML.</summary>
         /// <param name="content">The message content to render.</param>
         /// <returns>An asynchronous result that yields (success, details, renderedHtml).</returns>
-        public async Task<(bool success, string? details, string? renderedHtml)> TryRender(string content)
+        public Task<(bool success, string? details, string? renderedHtml)> TryRender(string content)
+        {
+            return TryRenderCore(content, null);
+        }
+
+        /// <summary>Renders HTML and optionally requests asynchronous URL-embed data (feature level 513).</summary>
+        /// <param name="content">The message Markdown.</param>
+        /// <param name="populateUrlEmbedData">Whether to populate URL embeds and receive url_embed_data events.</param>
+        /// <returns>The rendered HTML, or explicit failure details.</returns>
+        public Task<(bool success, string? details, string? renderedHtml)> TryRender(string content, bool populateUrlEmbedData)
+        {
+            return TryRenderCore(content, populateUrlEmbedData);
+        }
+
+        /// <summary>Renders HTML with optional URL-embed population.</summary>
+        /// <param name="content">The message Markdown.</param>
+        /// <param name="populateUrlEmbedData">Null omits the optional wire parameter.</param>
+        /// <returns>The rendered HTML, or explicit failure details.</returns>
+        private async Task<(bool success, string? details, string? renderedHtml)> TryRenderCore(string content, bool? populateUrlEmbedData)
         {
             Dictionary<string, string> data = new Dictionary<string, string>
             {
                 { "content", content }
             };
+            if (populateUrlEmbedData is bool populate) data.Add("populate_url_embed_data", populate.ToString().ToLowerInvariant());
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_messageApiEndpoint}/render", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<string>(response, "Messages.Render",
+                "rendered", JsonValueKind.String, out string? rendered, out string? details))
             {
-                return (true, null, response.RenderedMessage);
+                return (true, null, rendered);
             }
 
-            return (false, "Messages.Render failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Renders a message to HTML (throwing version).</summary>
@@ -680,6 +718,17 @@ namespace zulip_cs_lib.Resources
                 throw new Exception(result.details);
             }
 
+            return result.renderedHtml!;
+        }
+
+        /// <summary>Renders HTML with URL-embed population, throwing on failure (feature level 513).</summary>
+        /// <param name="content">The message Markdown.</param>
+        /// <param name="populateUrlEmbedData">Whether to populate URL embeds and receive asynchronous events.</param>
+        /// <returns>The rendered HTML.</returns>
+        public async Task<string> Render(string content, bool populateUrlEmbedData)
+        {
+            var result = await TryRender(content, populateUrlEmbedData);
+            if (!result.success) throw new Exception(result.details);
             return result.renderedHtml!;
         }
 
@@ -703,7 +752,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_messageApiEndpoint}/flags", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -737,12 +786,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_messageApiEndpoint}/{messageId}/history", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<MessageHistoryObject>>(response, "Messages.GetEditHistory",
+                "message_history", JsonValueKind.Array, out List<MessageHistoryObject>? history, out string? details,
+                array => ResponsePayload.ValidateElements(array, JsonValueKind.Object)))
             {
-                return (true, null, response.MessageHistory ?? new List<MessageHistoryObject>());
+                return (true, null, history);
             }
 
-            return (false, "Messages.GetEditHistory failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets the edit history of a message (throwing version).</summary>
@@ -765,14 +816,27 @@ namespace zulip_cs_lib.Resources
         /// <returns>An asynchronous result that yields (success, details).</returns>
         public async Task<(bool success, string? details)> TryMarkAllAsRead()
         {
-            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/mark_all_as_read", new Dictionary<string, string>());
+            var result = await TryMarkAllAsReadBatch();
+            return result.success
+                ? result.batch!.ToCompletionResult("Messages.MarkAllAsRead", nameof(TryMarkAllAsReadBatch))
+                : (false, result.details);
+        }
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
-            {
-                return (true, null);
-            }
+        /// <summary>Marks one batch as read without automatically repeating partial work.</summary>
+        /// <returns>The Try outcome and explicit completion state.</returns>
+        public async Task<(bool success, string? details, BatchOperationResult? batch)> TryMarkAllAsReadBatch()
+        {
+            ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/mark_all_as_read", []);
+            return BatchOperationResult.Read(response, "Messages.MarkAllAsRead");
+        }
 
-            return (false, "Messages.MarkAllAsRead failed: " + response.GetFailureMessage());
+        /// <summary>Marks one batch as read, throwing on request failure but returning partial completion.</summary>
+        /// <returns>The batch outcome; callers control continuation.</returns>
+        public async Task<BatchOperationResult> MarkAllAsReadBatch()
+        {
+            var result = await TryMarkAllAsReadBatch();
+            if (!result.success) throw new Exception(result.details);
+            return result.batch!;
         }
 
         /// <summary>Marks all messages as read (throwing version).</summary>
@@ -799,7 +863,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/mark_stream_as_read", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -834,7 +898,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, "api/v1/mark_topic_as_read", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -864,12 +928,13 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, $"{_messageApiEndpoint}/{messageId}/read_receipts", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<int>>(response, "Messages.GetReadReceipts",
+                "user_ids", JsonValueKind.Array, out List<int>? userIds, out string? details))
             {
-                return (true, null, response.UserIds ?? new List<int>());
+                return (true, null, userIds);
             }
 
-            return (false, "Messages.GetReadReceipts failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets read receipts for a message (throwing version).</summary>
@@ -897,7 +962,9 @@ namespace zulip_cs_lib.Resources
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
-            string recipients = string.Join(", ", stringIds);
+            string recipients = type == ZulipMessageType.Channel
+                ? JsonSerializer.Serialize(stringIds[0])
+                : string.Join(", ", stringIds);
 
             switch (type)
             {
@@ -926,7 +993,9 @@ namespace zulip_cs_lib.Resources
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
 
-            string recipients = "[" + string.Join(", ", intIds) + "]";
+            string recipients = type == ZulipMessageType.Channel
+                ? JsonSerializer.Serialize(intIds[0])
+                : JsonSerializer.Serialize(intIds);
 
             switch (type)
             {

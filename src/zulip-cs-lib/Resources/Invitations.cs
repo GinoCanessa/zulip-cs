@@ -31,12 +31,14 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Get, _endpoint, null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<List<InviteObject>>(response, "Invitations.GetAll", "invites", JsonValueKind.Array,
+                out List<InviteObject>? invites, out string? details,
+                invites => ResponsePayload.ValidateObjectIds(invites, "id")))
             {
-                return (true, null, response.Invites ?? new List<InviteObject>());
+                return (true, null, invites);
             }
 
-            return (false, "Invitations.GetAll failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Gets all invitations (throwing version).</summary>
@@ -71,7 +73,7 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, _endpoint, data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -103,12 +105,14 @@ namespace zulip_cs_lib.Resources
 
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_endpoint}/multiuse", data);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.TryRead<string>(response, "Invitations.CreateLink", "invite_link", JsonValueKind.String,
+                out string? linkUrl, out string? details,
+                link => string.IsNullOrWhiteSpace(link.GetString()) ? "required field 'invite_link' must be a nonempty URL string." : null))
             {
-                return (true, null, response.InviteLinkUrl);
+                return (true, null, linkUrl);
             }
 
-            return (false, "Invitations.CreateLink failed: " + response.GetFailureMessage(), null);
+            return (false, details, null);
         }
 
         /// <summary>Creates a reusable invite link (throwing version).</summary>
@@ -126,7 +130,7 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Post, $"{_endpoint}/{inviteId}/resend", new Dictionary<string, string>());
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -148,7 +152,7 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/{inviteId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
@@ -171,7 +175,7 @@ namespace zulip_cs_lib.Resources
         {
             ZulipResponse response = await _doZulipRequest(HttpMethod.Delete, $"{_endpoint}/multiuse/{inviteId}", null);
 
-            if (response.Result == ZulipResponse.ZulipResultSuccess)
+            if (ResponsePayload.IsSuccessful(response))
             {
                 return (true, null);
             }
