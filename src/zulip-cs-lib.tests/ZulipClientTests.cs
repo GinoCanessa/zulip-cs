@@ -89,6 +89,68 @@ namespace zulip_set_lib.tests
         private const string _key = "KeyInBase64";
         private const string _site = "https://zulip.example.org";
 
+        /// <summary>Ordinary cancellation returns current Try diagnostics and preserves throwing behavior.</summary>
+        [Fact]
+        public async Task ZulipClient_TimeoutReturnsFailureAndUpdatesLastResponse()
+        {
+            Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
+            handler.Protected().SetupSequence<Task<HttpResponseMessage>>(
+                "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = Utils.ContentForJsonString("{\"result\":\"success\",\"id\":31}")
+                })
+                .ThrowsAsync(new TaskCanceledException("fixture deadline expired"))
+                .ThrowsAsync(new TaskCanceledException("fixture deadline expired"));
+            using HttpClient http = new HttpClient(handler.Object);
+            ZulipClient client = new ZulipClient(_site, _email, _key, http);
+            Assert.True((await client.Messages.TrySendStream("hello", "topic", "channel")).success);
+            ZulipResponse previous = client.LastResponse!;
+            (bool success, string? details, ulong messageId) failed =
+                await client.Messages.TrySendStream("hello", "topic", "channel");
+            Assert.False(failed.success);
+            Assert.Contains("fixture deadline expired", failed.details);
+            Assert.NotSame(previous, client.LastResponse);
+            Assert.False(client.LastResponse!.Success);
+            Assert.Contains("fixture deadline expired", client.LastResponse.CaughtException);
+            Exception exception = await Assert.ThrowsAsync<Exception>(
+                () => client.Messages.SendStream("hello", "topic", "channel"));
+            Assert.Contains("fixture deadline expired", exception.Message);
+        }
+
+        /// <summary>Request-local content is disposed after success or parsing failure without closing the client.</summary>
+        /// <param name="body">The actual response body.</param>
+        [Theory]
+        [InlineData("{\"result\":\"success\"}")]
+        [InlineData("not JSON")]
+        public async Task ZulipClient_DisposesOrdinaryContentAndPreservesInjectedClient(string body)
+        {
+            List<HttpRequestMessage> requests = [];
+            List<MemoryStream> streams = [];
+            Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
+            handler.Protected().Setup<Task<HttpResponseMessage>>(
+                "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
+                {
+                    requests.Add(request);
+                    MemoryStream stream = new MemoryStream(Encoding.UTF8.GetBytes(body));
+                    streams.Add(stream);
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) });
+                });
+            using HttpClient http = new HttpClient(handler.Object);
+            ZulipClient client = new ZulipClient(_site, _email, _key, http);
+            for (int index = 0; index < 2; index++)
+            {
+                ZulipResponse response = await client.DoZulipRequestHttpClient(
+                    HttpMethod.Post, "api/v1/messages", new Dictionary<string, string> { ["content"] = "hello" });
+                Assert.Equal(body, response.HttpResponseBody);
+                Assert.False(streams[index].CanRead);
+                await Assert.ThrowsAsync<ObjectDisposedException>(
+                    () => requests[index].Content!.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            }
+            Assert.Equal(2, requests.Count);
+        }
+
 
         [Fact]
         public void ZulipClient_CreateMockHttp()
@@ -391,6 +453,45 @@ namespace zulip_set_lib.tests
             Assert.Same(response, curl.LastResponse);
         }
 
+        /// <summary>The actual ordinary curl executor retains HTTP precedence and malformed bodies.</summary>
+        /// <param name="status">The fixture HTTP status.</param>
+        /// <param name="body">The fixture response body.</param>
+        /// <param name="success">Whether the response is successful.</param>
+        [Theory(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
+        [InlineData(200, "{\"result\":\"success\",\"id\":31}", true)]
+        [InlineData(502, "{\"result\":\"success\",\"id\":31}", false)]
+        [InlineData(400, "not JSON", false)]
+        public async Task ZulipClient_OrdinaryCurlPreservesHttpStatus(int status, string body, bool success)
+        {
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            Task<LoopbackRequest> capture = ReceiveLoopbackRequest(listener, timeout.Token, body, status);
+            try
+            {
+                string site = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture);
+                ZulipClient client = new ZulipClient(site, _email, _key, "curl");
+                ZulipResponse response = await client.DoZulipRequestCurl(HttpMethod.Get, "api/v1/messages", null)
+                    .WaitAsync(timeout.Token);
+                Assert.Equal(success, response.Success);
+                Assert.Equal(status, response.HttpResponseCode);
+                Assert.Equal(body, response.HttpResponseBody);
+                Assert.Same(response, client.LastResponse);
+                if (status == 502) Assert.Contains("502", response.GetFailureMessage());
+                Assert.Equal("/api/v1/messages", (await capture).Target);
+            }
+            finally
+            {
+                timeout.Cancel();
+                listener.Stop();
+                try { await capture; }
+                catch (OperationCanceledException) { }
+                catch (SocketException) { }
+                catch (IOException) { }
+            }
+        }
+
         /// <summary>Provides structured and Unicode values sensitive to Windows argument quoting.</summary>
         /// <returns>The logical API form fields.</returns>
         private static Dictionary<string, string> TransportValues()
@@ -406,8 +507,11 @@ namespace zulip_set_lib.tests
         /// <summary>Receives one bounded local HTTP request and replies without contacting a Zulip server.</summary>
         /// <param name="listener">The loopback listener on an ephemeral port.</param>
         /// <param name="cancellationToken">The deadline for all socket operations.</param>
+        /// <param name="json">The response body.</param>
+        /// <param name="status">The response status.</param>
         /// <returns>The request line, headers and body seen on the wire.</returns>
-        private static async Task<LoopbackRequest> ReceiveLoopbackRequest(TcpListener listener, CancellationToken cancellationToken)
+        private static async Task<LoopbackRequest> ReceiveLoopbackRequest(TcpListener listener, CancellationToken cancellationToken,
+            string json = "{\"result\":\"success\",\"msg\":\"\"}", int status = 200)
         {
             using TcpClient connection = await listener.AcceptTcpClientAsync(cancellationToken);
             using NetworkStream stream = connection.GetStream();
@@ -435,8 +539,8 @@ namespace zulip_set_lib.tests
             if (bodyLength < 0 || bodyLength > 16384) throw new IOException("Loopback request body exceeded the fixture limit.");
             byte[] body = new byte[bodyLength];
             await stream.ReadExactlyAsync(body, cancellationToken);
-            const string json = "{\"result\":\"success\",\"msg\":\"\"}";
-            byte[] response = Encoding.UTF8.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+            byte[] response = Encoding.UTF8.GetBytes("HTTP/1.1 " + status.ToString(CultureInfo.InvariantCulture) +
+                " Fixture\r\nContent-Type: application/json\r\nContent-Length: " +
                 Encoding.UTF8.GetByteCount(json).ToString(CultureInfo.InvariantCulture) + "\r\nConnection: close\r\n\r\n" + json);
             await stream.WriteAsync(response, cancellationToken);
             return new LoopbackRequest(requestLine[0], requestLine[1], headers, Encoding.UTF8.GetString(body));

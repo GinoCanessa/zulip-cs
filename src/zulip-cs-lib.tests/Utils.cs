@@ -36,19 +36,16 @@ internal static class Utils
     {
         mockMessageHandler = new Mock<HttpMessageHandler>();
 
-        HttpResponseMessage mockResponse = new HttpResponseMessage()
-        {
-            StatusCode = code,
-            Content = content,
-        };
-
         mockMessageHandler
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(mockResponse);
+            .Returns(async () => new HttpResponseMessage(code)
+            {
+                Content = await SnapshotContent(content),
+            });
 
         mockHttpClient = new HttpClient(mockMessageHandler.Object);
 
@@ -72,20 +69,17 @@ internal static class Utils
         mockMessageHandler = new Mock<HttpMessageHandler>();
         HttpRequestMessage? captured = null;
 
-        HttpResponseMessage mockResponse = new HttpResponseMessage()
-        {
-            StatusCode = code,
-            Content = content,
-        };
-
         mockMessageHandler
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => captured = req)
-            .ReturnsAsync(mockResponse);
+            .Returns<HttpRequestMessage, CancellationToken>(async (request, _) =>
+            {
+                captured = await SnapshotRequest(request);
+                return new HttpResponseMessage(code) { Content = await SnapshotContent(content) };
+            });
 
         mockHttpClient = new HttpClient(mockMessageHandler.Object);
         capturedRequest = () => captured;
@@ -103,15 +97,46 @@ internal static class Utils
         Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
         handler.Protected().Setup<Task<HttpResponseMessage>>(
             "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
+            .Returns<HttpRequestMessage, CancellationToken>(async (request, _) =>
             {
-                requests.Add(request);
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                requests.Add(await SnapshotRequest(request));
+                return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = ContentForJsonString(responses.Dequeue())
-                });
+                };
             });
         return new ZulipClient(_site, _email, _key, new HttpClient(handler.Object));
+    }
+
+    /// <summary>Copies request data while the production request is still alive.</summary>
+    /// <param name="request">The request being sent.</param>
+    /// <returns>An independent request snapshot.</returns>
+    internal static async Task<HttpRequestMessage> SnapshotRequest(HttpRequestMessage request)
+    {
+        HttpRequestMessage snapshot = new HttpRequestMessage(request.Method, request.RequestUri)
+        {
+            Version = request.Version,
+            VersionPolicy = request.VersionPolicy,
+            Content = request.Content == null ? null : await SnapshotContent(request.Content),
+        };
+        foreach (KeyValuePair<string, IEnumerable<string>> header in request.Headers)
+        {
+            snapshot.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+        return snapshot;
+    }
+
+    /// <summary>Copies content bytes and headers without transferring ownership of the source.</summary>
+    /// <param name="content">The source content.</param>
+    /// <returns>Independent content for a snapshot or fresh response.</returns>
+    private static async Task<HttpContent> SnapshotContent(HttpContent content)
+    {
+        ByteArrayContent snapshot = new ByteArrayContent(await content.ReadAsByteArrayAsync());
+        foreach (KeyValuePair<string, IEnumerable<string>> header in content.Headers)
+        {
+            snapshot.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+        return snapshot;
     }
 
     /// <summary>Reads the decoded form fields from a captured request.</summary>

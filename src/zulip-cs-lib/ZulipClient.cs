@@ -482,7 +482,7 @@ namespace zulip_cs_lib
                     request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
                 result.HttpResponseCode = (int)response.StatusCode;
                 string body = await response.Content.ReadAsStringAsync(deadline.Token);
-                result = ParseUploadResponse(body, (int)response.StatusCode);
+                result = ParseResponse(body, (int)response.StatusCode);
             }
             catch (OperationCanceledException exception)
             {
@@ -572,7 +572,7 @@ namespace zulip_cs_lib
                     ? int.Parse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture)
                     : 0;
                 string body = marker >= 0 ? output.Substring(0, marker) : output;
-                result = ParseUploadResponse(body, status);
+                result = ParseResponse(body, status);
                 receivedResponse = true;
                 if (!hasStatus || status == 0 || process.ExitCode != 0)
                 {
@@ -707,11 +707,11 @@ namespace zulip_cs_lib
             }
         }
 
-        /// <summary>Parses an upload envelope without losing its actual HTTP status or malformed body.</summary>
+        /// <summary>Parses a response envelope without losing its actual HTTP status or malformed body.</summary>
         /// <param name="body">The actual response body without curl's write-out suffix.</param>
         /// <param name="status">The actual HTTP response status.</param>
         /// <returns>The completed response.</returns>
-        private static ZulipResponse ParseUploadResponse(string body, int status)
+        private static ZulipResponse ParseResponse(string body, int status)
         {
             ZulipResponse result;
             try
@@ -770,42 +770,38 @@ namespace zulip_cs_lib
             try
             {
                 ProcessStartInfo startInfo = BuildCurlStartInfo(httpMethod, relativeUrl, data);
+                string suffix = "\nZULIP_RESPONSE_STATUS_" + Guid.NewGuid().ToString("N") + ":";
+                startInfo.ArgumentList.Add("--write-out");
+                startInfo.ArgumentList.Add(suffix + "%{http_code}");
                 using Process proc = Process.Start(startInfo)
                     ?? throw new InvalidOperationException("Unable to start curl.");
                 Task<string> bodyTask = proc.StandardOutput.ReadToEndAsync();
                 Task<string> errorTask = proc.StandardError.ReadToEndAsync();
                 await proc.WaitForExitAsync();
-                string body = await bodyTask;
+                string output = await bodyTask;
                 string errors = await errorTask;
+                int marker = output.LastIndexOf(suffix, StringComparison.Ordinal);
+                bool hasStatus = marker >= 0 && output.Length == marker + suffix.Length + 3 &&
+                    int.TryParse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+                int status = hasStatus
+                    ? int.Parse(output.AsSpan(marker + suffix.Length), NumberStyles.None, CultureInfo.InvariantCulture)
+                    : 0;
+                string body = marker >= 0 ? output.Substring(0, marker) : output;
+                zulipResponse = hasStatus && status is >= 100 and <= 599
+                    ? ParseResponse(body, status)
+                    : new ZulipResponse
+                    {
+                        CaughtException = "curl did not return a valid HTTP status.",
+                        HttpResponseCode = status,
+                        HttpResponseBody = body,
+                        Success = false,
+                    };
 
-                if (proc.ExitCode != 0 || string.IsNullOrEmpty(body))
+                if (proc.ExitCode != 0)
                 {
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = proc.ExitCode != 0
-                        ? $"curl exited with code {proc.ExitCode}: {errors}"
-                        : string.IsNullOrEmpty(errors) ? "curl returned no data!" : errors;
-                    zulipResponse.HttpResponseBody = body;
-                    zulipResponse.Success = false;
-                    LastResponse = zulipResponse;
-                    return zulipResponse;
-                }
-
-                try
-                {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)
-                        ?? throw new JsonException("The Zulip response must be a JSON object.");
-                    zulipResponse.Success = zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
-                        string.IsNullOrEmpty(zulipResponse.CaughtException);
-                }
-                catch (JsonException parseEx)
-                {
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = parseEx.Message;
+                    zulipResponse.CaughtException = $"curl exited with code {proc.ExitCode}: {errors}";
                     zulipResponse.Success = false;
                 }
-
-                zulipResponse.HttpResponseCode = 0;
-                zulipResponse.HttpResponseBody = body;
             }
             catch (System.ComponentModel.Win32Exception processEx)
             {
@@ -886,49 +882,32 @@ namespace zulip_cs_lib
             {
                 Uri requestUri = new Uri(_siteUri, relativeUrl);
 
-                HttpRequestMessage request;
-
                 if (httpMethod == HttpMethod.Get && data != null && data.Count != 0)
                 {
-                    var query = string.Join("&", data.Select(
+                    string query = string.Join("&", data.Select(
                         kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
                     requestUri = new Uri(requestUri, "?" + query);
-                    request = new HttpRequestMessage(httpMethod, requestUri);
                 }
-                else
-                {
-                    request = new HttpRequestMessage(httpMethod, requestUri);
 
-                    if ((data != null) && (data.Count != 0))
-                    {
-                        request.Content = new FormUrlEncodedContent(data);
-                    }
+                using HttpRequestMessage request = new HttpRequestMessage(httpMethod, requestUri);
+                if (httpMethod != HttpMethod.Get && data != null && data.Count != 0)
+                {
+                    request.Content = new FormUrlEncodedContent(data);
                 }
 
                 request.Headers.Add("Authorization", _authHeader);
 
-                HttpResponseMessage response = await _httpClient!.SendAsync(request);
-
+                using HttpResponseMessage response = await _httpClient!.SendAsync(request);
                 string body = await response.Content.ReadAsStringAsync();
-
-                try
+                zulipResponse = ParseResponse(body, (int)response.StatusCode);
+            }
+            catch (OperationCanceledException exception)
+            {
+                zulipResponse = new ZulipResponse
                 {
-                    zulipResponse = JsonSerializer.Deserialize<ZulipResponse>(body)
-                        ?? throw new JsonException("The Zulip response must be a JSON object.");
-
-                    zulipResponse.Success = response.IsSuccessStatusCode &&
-                        zulipResponse.Result == ZulipResponse.ZulipResultSuccess &&
-                        string.IsNullOrEmpty(zulipResponse.CaughtException);
-                }
-                catch (JsonException parseEx)
-                {
-                    zulipResponse = new ZulipResponse();
-                    zulipResponse.CaughtException = parseEx.Message;
-                    zulipResponse.Success = false;
-                }
-
-                zulipResponse.HttpResponseCode = ((int)response.StatusCode);
-                zulipResponse.HttpResponseBody = body;
+                    CaughtException = "HTTP request timed out or was canceled: " + exception.Message,
+                    Success = false,
+                };
             }
             catch (HttpRequestException httpEx)
             {
