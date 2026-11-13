@@ -59,7 +59,7 @@ All Zulip API operations are accessed through resource properties on `ZulipClien
 
 | Property | Description |
 |---|---|
-| `Messages` | Send, edit, delete, fetch, render messages; emoji reactions; flags; read state. |
+| `Messages` | Send, edit, delete, fetch, render messages; emoji reactions; flags and explicit narrow-range read state. |
 | `Channels` | List, create, update, archive channels; manage subscriptions and topics. |
 | `Users` | Get, create, update, deactivate users; presence; status; alert words; user groups. |
 | `Server` | Get server settings (version, feature level). |
@@ -71,6 +71,7 @@ All Zulip API operations are accessed through resource properties on `ZulipClien
 | `SavedSnippets` | Create, edit, delete, and list saved snippets. |
 | `Reminders` | Create with identity/optional note, delete, and list reminder targets/content/failure state. |
 | `NavigationViews` | Create, update, delete, and list fragment-identified views and pin state. |
+| `Files` | Stream file uploads and list/delete attachments, using either HTTP backend. |
 
 ### Throwing vs Try Pattern
 
@@ -93,7 +94,7 @@ if (!success)
 
 Required response fields and essential identities are validated: missing/null/malformed data fails explicitly, while actual empty collections remain valid. Successful responses can still carry nonfatal `ignored_parameters_unsupported` warnings. Inspect `client.LastResponse?.IgnoredParametersUnsupported`, `RawPayload`, and `ExtensionData` for diagnostics and unmodeled data.
 
-`LastResponse` is the **most recently completed** request, not a per-call association under concurrency. `PresenceResult`, `RegistrationResult`, and `BatchOperationResult` carry their own `Response`; prefer these for request-local diagnostics. Do not retry an applied mutation just because a compatibility warning was returned.
+`LastResponse` is the **most recently completed** request, not a per-call association under concurrency. Detailed presence, registration, batch and narrow-flag results carry their own `Response`; prefer these for request-local diagnostics. Do not retry an applied mutation just because a compatibility warning was returned. A malformed result after a mutation is also not proof of rollback; inspect the response before deciding to retry.
 
 ### Examples
 
@@ -132,7 +133,15 @@ List<SubscriptionObject> subs = await client.Channels.GetSubscriptions();
 
 // Get topics in a channel
 List<TopicObject> topics = await client.Channels.GetTopics(streamId: 42);
+
+// Explicit channel creation (FL417), rather than creating through subscribe
+int channelId = await client.Channels.CreateWithId("project", [7, 8]);
+await client.Channels.UpdateTopicVisibility(channelId, "planning", TopicVisibilityPolicy.Followed);
+await client.Channels.UpdateSubscriptionProperty(
+    new SubscriptionPropertyChange(channelId, SubscriptionProperty.IsMuted, true));
 ```
+
+`ChannelCreationOptions` exposes selected permissions, topic/retention/privacy/default settings and default push notifications (FL507). `GetSubscriptionStatus` returns the actual `is_subscribed` value. Bulk `UpdateSubscriptionSettings` and single-property updates use typed `SubscriptionPropertyChange` values. Legacy topic muting remains available; prefer `UpdateTopicVisibility` for None/Muted/Unmuted/Followed policy.
 
 **Register an event queue with initial state:**
 
@@ -194,6 +203,62 @@ BatchOperationResult batch = await client.Channels.DeleteTopicBatch(42, "old top
 
 `Messages.MarkAllAsReadBatch` has the same one-shot contract. No internal continuation loop is run. Existing `DeleteTopic`/`MarkAllAsRead` convenience methods fail/throw for **known partial** work; missing legacy completion retains success with explicit Try details and unknown state on batch results. A failure reporting partial work is not a rollback.
 
+**Modern narrow-based read state and URL embeds:**
+
+```csharp
+NarrowFlagUpdateResult update = await client.Messages.UpdateFlagsForNarrow(
+    "oldest", 0, 1000,
+    [new Narrow(Narrow.NarrowOperator.IsUnread)],
+    Messages.FlagOperation.Add, "read");
+// This is one server-bounded range, not necessarily the entire narrow.
+// Inspect FoundOldest/FoundNewest and FirstProcessedId/LastProcessedId before continuing.
+
+string html = await client.Messages.Render("https://example.org", populateUrlEmbedData: true);
+// FL513 may deliver later rendering changes as url_embed_data events.
+```
+
+Flags-for-narrow (FL155) is the replacement for legacy mark-all/channel/topic-read routes. An empty range has null cursors; the server may process fewer messages than requested. Continue deliberately using the returned boundaries, and stop or report lack of progress rather than retrying indefinitely. `hide_link_previews` is a supported flag from FL510. The original one-argument render overload still omits the embed option.
+
+**Retain creation identities and publish presence:**
+
+```csharp
+List<int> draftIds = await client.Drafts.CreateWithIds(new DraftInput[]
+{
+    new DraftInput { Type = "stream", To = [42], Topic = "notes", Content = "Draft text" }
+});
+int snippetId = await client.SavedSnippets.CreateWithId("Greeting", "Hello!");
+int profileFieldId = await client.Organization.CreateProfileFieldWithId(1, "Department");
+int groupId = await client.Users.CreateGroupWithId("project team", "Project contributors", [7, 8]);
+await client.Users.UpdateGroupMembers(groupId, add: [9]);
+bool isMember = await client.Users.GetGroupMembershipStatus(groupId, 9);
+
+RealmPresenceResult state = await client.Users.UpdateOwnPresence(Users.PresenceStatus.Active);
+long revision = state.PresenceLastUpdateId!.Value;
+state = await client.Users.UpdateOwnPresence(Users.PresenceStatus.Idle, lastUpdateId: revision);
+```
+
+Drafts use the documented `stream`/`private`/empty wire types, unlike modern send-message aliases; `DraftInput` excludes server IDs and lets the server supply omitted timestamps. Draft UI support remains pending in the published server documentation. Existing creation methods retain their signatures but validate actual returned IDs. Profile-field creation requires an organization administrator; `ProfileFieldOptions` supports documented structured configuration and optional settings.
+
+Groups support initial subgroups/governance through `GroupOptions`, subsequent updates through `GroupUpdateOptions`, member/subgroup mutation and queries, and deactivation. `GroupSettingUpdate` carries the documented replacement `New` plus optional expected `Old` value; expectation failures are not retried automatically. Group creation returns `group_id`, unlike a channel's creation `id`. Permissions remain enforced by the server; bot callers need FL496 for the group endpoints that permit them.
+
+Presence publication uses the incremental protocol (FL263), always sends `last_update_id` and never infers active/idle from timestamps. Preserve and reuse its revision; `pingOnly: true` returns no presence data or server clock. `GetRealmPresence` returns the realm endpoint's legacy email-keyed data. Alert-word removal returns the remaining words, and `SetMessageEditTyping` uses the current message-specific path (FL361).
+
+**Upload and manage attachments:**
+
+```csharp
+using System.IO;
+
+using FileStream file = File.OpenRead("report.pdf");
+FileUploadResult uploaded = await client.Files.Upload(file, "report.pdf", "application/pdf");
+string markdown = $"[Report]({uploaded.Url})"; // Uploading does not send a message.
+AttachmentListResult attachments = await client.Files.GetAll();
+await client.Files.Delete(42);
+```
+
+Uploads consume the remaining stream bytes through HttpClient or binary curl stdin, without whole-file buffering or temporary content files. The caller owns the input stream, including on error/cancellation. `UploadTimeout` defaults to 100 seconds and accepts positive durations up to 2,147,483,646 milliseconds; curl cleanup can add up to five seconds. Cancellation and upload timeout return explicit Try failure details (throwing variants throw). An injected HttpClient's own timeout may be shorter, and cancellation-ignoring input streams may outlive bounded cleanup. Real child-process checks use only bounded loopback fixtures.
+
+Upload `url` is required (FL272); returned `filename` is optional (FL285). Attachment reads use current seconds-based timestamps (FL443) and `message_ids` (FL472), not the historical embedded-message shape. Upload success does not mean the attachment has been referenced by a message; malformed mutation results do not imply rollback.
+
 **Fetch an API key from username/password:**
 
 ```csharp
@@ -229,9 +294,29 @@ Message/history models retain reactions and edit/move metadata. Channel/subscrip
 
 `StreamPostPolicy` is deprecated and an **inexact superset**, not authorization. Use authoritative channel group settings such as `CanSendMessageGroup`, together with realm permissions and channel access; do not infer posting rights from the coarse policy alone. Optional metadata varies by server feature level; read `Server.GetSettings` and compatibility warnings before relying on newer features.
 
+### Compatibility Scope
+
+This increment uses the published `chat.fhir.org` contracts through **feature level 513**, reconfirmed on 2026-11-13. That is a feature ceiling, not a new global minimum-server guarantee or authenticated production certification. No FL514+ options, FL515 unsubscribe notifications or unverified bot-ownership backports are assumed.
+
+| Capability | Feature requirement |
+|---|---|
+| Typed drafts and ordered creation IDs | FL87; published web UI implementation pending |
+| Narrow flag updates | FL155; skipped unread-channel diagnostics at FL355 |
+| Personal topic policy | FL170; followed topics at FL219; empty topics at FL334 |
+| Explicit channel creation | FL417; default push notifications at FL507 |
+| Incremental presence publication | FL263; optional history window at FL288 |
+| Saved-snippet creation identity | FL297 |
+| Message-edit typing on the current path | FL361 |
+| Upload URL / optional filename | FL272 / FL285 |
+| Current attachment listing shape | FL472, with seconds-based timestamps from FL443 |
+| Group extensions | Initial/combined subgroups FL311; deactivation FL290; reactivation FL386; bot callers FL496 where permitted |
+| URL-embed rendering | FL513 |
+
+The library does not make hidden capability-discovery calls or silently retry unsupported requests. Gate newer methods/options using explicit server settings, and inspect standard errors/warnings. Video/mobile/bouncer, broad settings/authentication administration, channel folders and exhaustive send/fetch option parity remain outside this increment.
+
 ## Architecture
 
-`ZulipClient` authenticates via Basic auth (email + API key) and delegates HTTP execution to either `HttpClient` or a `curl` subprocess. API resource classes (e.g., `Messages`, `Channels`) receive a request delegate from `ZulipClient` rather than making HTTP calls directly, enabling the dual-backend design and straightforward testing via mocked `HttpMessageHandler`.
+`ZulipClient` authenticates via Basic auth (email + API key) and delegates HTTP execution to either `HttpClient` or a `curl` subprocess. API resource classes (e.g., `Messages`, `Channels`) receive a request delegate from `ZulipClient` rather than making HTTP calls directly, enabling the dual-backend design and straightforward testing via mocked `HttpMessageHandler`. `Files` also receives a focused stream-upload delegate; ordinary endpoints keep their existing form/query transport.
 
 # CLI
 
