@@ -380,47 +380,26 @@ namespace zulip_set_lib.tests
                 LoopbackRequest httpRequest = await httpCapture;
 
                 ZulipClient curl = new ZulipClient(site, _email, key, "curl");
-                ProcessStartInfo start = curl.BuildCurlStartInfo(httpMethod, "api/v1/messages", data);
-                start.ArgumentList.Add("--noproxy");
-                start.ArgumentList.Add("*");
-                start.ArgumentList.Add("--max-time");
-                start.ArgumentList.Add("10");
                 Task<LoopbackRequest> curlCapture = ReceiveLoopbackRequest(listener, timeout.Token);
                 captures.Add(curlCapture);
-                using Process process = Process.Start(start)!;
-                try
-                {
-                    Task<string> stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-                    Task<string> stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-                    await process.WaitForExitAsync(timeout.Token);
-                    string body = await stdout;
-                    string errors = await stderr;
-                    Assert.True(process.ExitCode == 0, errors);
-                    Assert.Equal("{\"result\":\"success\",\"msg\":\"\"}", body);
-                    LoopbackRequest curlRequest = await curlCapture;
-                    Assert.Equal(httpRequest.Method, curlRequest.Method);
-                    Assert.Equal(method, curlRequest.Method);
-                    Assert.Equal(httpRequest.Target, curlRequest.Target);
-                    string credential = _email + ":" + key;
-                    Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(credential)),
-                        curlRequest.Headers["Authorization"]);
-                    Assert.Equal(httpRequest.Headers["Authorization"], curlRequest.Headers["Authorization"]);
-                    Dictionary<string, string> httpValues = method == "GET"
-                        ? Utils.DecodeForm(new Uri(site + httpRequest.Target).Query) : Utils.DecodeForm(httpRequest.Body);
-                    Dictionary<string, string> curlValues = method == "GET"
-                        ? Utils.DecodeForm(new Uri(site + curlRequest.Target).Query) : Utils.DecodeForm(curlRequest.Body);
-                    Assert.Equal(data, httpValues);
-                    Assert.Equal(data, curlValues);
-                }
-                finally
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                        using CancellationTokenSource cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                        await process.WaitForExitAsync(cleanup.Token);
-                    }
-                }
+                ZulipResponse curlResponse = await curl.DoZulipRequestCurl(
+                    httpMethod, "api/v1/messages", data, ConfigureIsolatedCurl, timeout.Token);
+                Assert.True(curlResponse.Success, curlResponse.CaughtException);
+                Assert.Equal("{\"result\":\"success\",\"msg\":\"\"}", curlResponse.HttpResponseBody);
+                LoopbackRequest curlRequest = await curlCapture;
+                Assert.Equal(httpRequest.Method, curlRequest.Method);
+                Assert.Equal(method, curlRequest.Method);
+                Assert.Equal(httpRequest.Target, curlRequest.Target);
+                string credential = _email + ":" + key;
+                Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(credential)),
+                    curlRequest.Headers["Authorization"]);
+                Assert.Equal(httpRequest.Headers["Authorization"], curlRequest.Headers["Authorization"]);
+                Dictionary<string, string> httpValues = method == "GET"
+                    ? Utils.DecodeForm(new Uri(site + httpRequest.Target).Query) : Utils.DecodeForm(httpRequest.Body);
+                Dictionary<string, string> curlValues = method == "GET"
+                    ? Utils.DecodeForm(new Uri(site + curlRequest.Target).Query) : Utils.DecodeForm(curlRequest.Body);
+                Assert.Equal(data, httpValues);
+                Assert.Equal(data, curlValues);
             }
             finally
             {
@@ -442,10 +421,11 @@ namespace zulip_set_lib.tests
         [Fact(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
         public async Task ZulipClient_CurlExitFailureRetainsDiagnostics()
         {
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
             ZulipClient curl = new ZulipClient("http://127.0.0.1", _email, _key, "curl");
             ZulipResponse response = await curl.DoZulipRequestCurl(
-                HttpMethod.Get, "zulip-test-unsupported://127.0.0.1/", null)
-                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+                HttpMethod.Get, "zulip-test-unsupported://127.0.0.1/", null, ConfigureIsolatedCurl, timeout.Token);
             Assert.False(response.Success);
             Assert.Contains("curl exited with code", response.CaughtException);
             Assert.Contains("protocol", response.CaughtException!, StringComparison.OrdinalIgnoreCase);
@@ -472,8 +452,8 @@ namespace zulip_set_lib.tests
             {
                 string site = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture);
                 ZulipClient client = new ZulipClient(site, _email, _key, "curl");
-                ZulipResponse response = await client.DoZulipRequestCurl(HttpMethod.Get, "api/v1/messages", null)
-                    .WaitAsync(timeout.Token);
+                ZulipResponse response = await client.DoZulipRequestCurl(
+                    HttpMethod.Get, "api/v1/messages", null, ConfigureIsolatedCurl, timeout.Token);
                 Assert.Equal(success, response.Success);
                 Assert.Equal(status, response.HttpResponseCode);
                 Assert.Equal(body, response.HttpResponseBody);
@@ -490,6 +470,63 @@ namespace zulip_set_lib.tests
                 catch (SocketException) { }
                 catch (IOException) { }
             }
+        }
+
+        /// <summary>A local stalled response cannot outlive the ordinary curl execution deadline.</summary>
+        [Fact(Skip = "Requires curl on PATH.", SkipUnless = nameof(CurlAvailable))]
+        public async Task ZulipClient_OrdinaryCurlDeadlineClosesOwnedConnectionBeforeReturning()
+        {
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+            Task<ZulipResponse>? operation = null;
+            try
+            {
+                string site = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture);
+                ZulipClient client = new ZulipClient(site, _email, _key, "curl");
+                operation = client.DoZulipRequestCurl(
+                    HttpMethod.Get, "api/v1/messages", null, ConfigureIsolatedCurl, deadline.Token);
+                using TcpClient connection = await listener.AcceptTcpClientAsync(timeout.Token);
+                using NetworkStream stream = connection.GetStream();
+                byte[] buffer = new byte[16384];
+                Assert.True(await stream.ReadAsync(buffer, timeout.Token) > 0);
+                Stopwatch elapsed = Stopwatch.StartNew();
+                deadline.CancelAfter(TimeSpan.FromMilliseconds(100));
+                ZulipResponse response = await operation.WaitAsync(TimeSpan.FromSeconds(8), timeout.Token);
+                Assert.False(response.Success);
+                Assert.Equal("curl request canceled.", response.CaughtException);
+                Assert.Same(response, client.LastResponse);
+                Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(6), "curl exceeded its independent cleanup bound.");
+                try
+                {
+                    while (await stream.ReadAsync(buffer, timeout.Token) != 0) { }
+                }
+                catch (IOException exception) when (exception.InnerException is SocketException
+                    { SocketErrorCode: SocketError.ConnectionReset }) { }
+            }
+            finally
+            {
+                deadline.Cancel();
+                listener.Stop();
+                if (operation != null)
+                {
+                    using CancellationTokenSource cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                    await operation.WaitAsync(cleanup.Token);
+                }
+            }
+        }
+
+        /// <summary>Isolates curl fixtures from user configuration and proxies and bounds child execution.</summary>
+        /// <param name="start">The production invocation before the child is started.</param>
+        private static void ConfigureIsolatedCurl(ProcessStartInfo start)
+        {
+            start.ArgumentList.Insert(0, "--disable");
+            start.ArgumentList.Add("--noproxy");
+            start.ArgumentList.Add("*");
+            start.ArgumentList.Add("--max-time");
+            start.ArgumentList.Add("10");
         }
 
         /// <summary>Provides structured and Unicode values sensitive to Windows argument quoting.</summary>

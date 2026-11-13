@@ -607,7 +607,7 @@ namespace zulip_cs_lib
                 {
                     Task stopSerializer = serializer.CancelAsync();
                     completion = completion == null ? stopSerializer : Task.WhenAll(completion, stopSerializer);
-                    string? cleanupError = started ? await CleanupCurlUploadAsync(process, completion) : null;
+                    string? cleanupError = started ? await CleanupCurlProcessAsync(process, completion, "Upload") : null;
                     if (cleanupError != null)
                     {
                         result.CaughtException = string.IsNullOrEmpty(result.CaughtException)
@@ -671,11 +671,12 @@ namespace zulip_cs_lib
             return (failure, interrupted);
         }
 
-        /// <summary>Kills only the upload's child process tree and bounds pipe/exit cleanup independently of caller cancellation.</summary>
-        /// <param name="process">The specific upload process.</param>
-        /// <param name="completion">The concurrent serializer, pipe drains and exit wait.</param>
+        /// <summary>Kills only the owned child process tree and bounds pipe/exit cleanup independently of caller cancellation.</summary>
+        /// <param name="process">The specific curl process.</param>
+        /// <param name="completion">The concurrent pipe drains, exit wait and optional upload serializer.</param>
+        /// <param name="operation">The operation label used in cleanup diagnostics.</param>
         /// <returns>A cleanup failure, or null.</returns>
-        private static async Task<string?> CleanupCurlUploadAsync(Process process, Task? completion)
+        private static async Task<string?> CleanupCurlProcessAsync(Process process, Task? completion, string operation)
         {
             try
             {
@@ -692,15 +693,18 @@ namespace zulip_cs_lib
             {
                 if (completion != null)
                     _ = completion.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
-                return "Upload process cleanup exceeded five seconds.";
+                return operation + " process cleanup exceeded five seconds.";
             }
             catch (Exception exception)
             {
-                return "Upload process cleanup failed: " + exception.Message;
+                return operation + " process cleanup failed: " + exception.Message;
             }
             finally
             {
-                try { process.StandardInput.Close(); }
+                try
+                {
+                    if (process.StartInfo.RedirectStandardInput) process.StandardInput.Close();
+                }
                 catch (IOException) { }
                 catch (ObjectDisposedException) { }
                 catch (InvalidOperationException) { }
@@ -760,24 +764,48 @@ namespace zulip_cs_lib
         /// <param name="relativeUrl">URL of the relative.</param>
         /// <param name="data">       The data.</param>
         /// <returns>An asynchronous result that yields a ZulipResponse.</returns>
+        internal Task<ZulipResponse> DoZulipRequestCurl(
+            HttpMethod httpMethod,
+            string relativeUrl,
+            Dictionary<string, string>? data) =>
+            DoZulipRequestCurl(httpMethod, relativeUrl, data, null, CancellationToken.None);
+
+        /// <summary>Executes the ordinary production curl path with request-owned cancellation and optional start configuration.</summary>
+        /// <param name="httpMethod">The HTTP method.</param>
+        /// <param name="relativeUrl">The API-relative URL.</param>
+        /// <param name="data">Form or query parameters.</param>
+        /// <param name="configureStartInfo">Optional invocation configuration, used to isolate local fixtures.</param>
+        /// <param name="cancellationToken">The execution deadline; cleanup has an independent five-second bound.</param>
+        /// <returns>The response after the owned process and its pipes have been cleaned up.</returns>
         internal async Task<ZulipResponse> DoZulipRequestCurl(
             HttpMethod httpMethod,
             string relativeUrl,
-            Dictionary<string, string>? data)
+            Dictionary<string, string>? data,
+            Action<ProcessStartInfo>? configureStartInfo,
+            CancellationToken cancellationToken)
         {
-            ZulipResponse zulipResponse;
+            ZulipResponse zulipResponse = new ZulipResponse();
+            Process? proc = null;
+            bool started = false;
+            Task? completion = null;
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ProcessStartInfo startInfo = BuildCurlStartInfo(httpMethod, relativeUrl, data);
                 string suffix = "\nZULIP_RESPONSE_STATUS_" + Guid.NewGuid().ToString("N") + ":";
                 startInfo.ArgumentList.Add("--write-out");
                 startInfo.ArgumentList.Add(suffix + "%{http_code}");
-                using Process proc = Process.Start(startInfo)
-                    ?? throw new InvalidOperationException("Unable to start curl.");
+                configureStartInfo?.Invoke(startInfo);
+                cancellationToken.ThrowIfCancellationRequested();
+                proc = new Process { StartInfo = startInfo };
+                if (!proc.Start()) throw new InvalidOperationException("Unable to start curl.");
+                started = true;
                 Task<string> bodyTask = proc.StandardOutput.ReadToEndAsync();
                 Task<string> errorTask = proc.StandardError.ReadToEndAsync();
-                await proc.WaitForExitAsync();
+                completion = Task.WhenAll(bodyTask, errorTask, proc.WaitForExitAsync());
+                // Keep the drains alive for owned-process cleanup if the caller stops waiting.
+                await completion.WaitAsync(cancellationToken);
                 string output = await bodyTask;
                 string errors = await errorTask;
                 int marker = output.LastIndexOf(suffix, StringComparison.Ordinal);
@@ -803,6 +831,14 @@ namespace zulip_cs_lib
                     zulipResponse.Success = false;
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                zulipResponse = new ZulipResponse
+                {
+                    CaughtException = "curl request canceled.",
+                    Success = false,
+                };
+            }
             catch (System.ComponentModel.Win32Exception processEx)
             {
                 zulipResponse = new ZulipResponse
@@ -818,6 +854,20 @@ namespace zulip_cs_lib
                 zulipResponse = new ZulipResponse();
                 zulipResponse.CaughtException = httpEx.Message;
                 zulipResponse.Success = false;
+            }
+            finally
+            {
+                if (proc != null)
+                {
+                    string? cleanupError = started ? await CleanupCurlProcessAsync(proc, completion, "curl") : null;
+                    if (cleanupError != null)
+                    {
+                        zulipResponse.CaughtException = string.IsNullOrEmpty(zulipResponse.CaughtException)
+                            ? cleanupError : zulipResponse.CaughtException + " " + cleanupError;
+                        zulipResponse.Success = false;
+                    }
+                    proc.Dispose();
+                }
             }
 
             LastResponse = zulipResponse;

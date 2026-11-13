@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
@@ -323,6 +324,114 @@ namespace zulip_set_lib.tests
                 Result = "success", QueueId = "assigned", LastEventId64 = cursor
             }));
             Assert.Equal(cursor, (await assigned.Register()).LastEventId64);
+        }
+
+        /// <summary>Registration retains the logical cursor name under both default and web naming policies.</summary>
+        /// <param name="cursor">The lossless registration cursor.</param>
+        /// <param name="web">Whether to apply web serializer defaults.</param>
+        [Theory]
+        [InlineData(-1L, false)]
+        [InlineData(0L, false)]
+        [InlineData(2147483648L, false)]
+        [InlineData(-1L, true)]
+        [InlineData(0L, true)]
+        [InlineData(2147483648L, true)]
+        public async Task Events_RegistrationSerializationPreservesCursorNamingPolicy(long cursor, bool web)
+        {
+            RegistrationResult registration = await CreateEvents(
+                $$$$"""
+                {"result":"success","queue_id":"queue","last_event_id":{{{{cursor}}}},"zulip_version":"13",
+                 "realm_users":[{"user_id":10,"email":"a@example.org","full_name":"A"}],
+                 "presences":{"10":{"active_timestamp":123}}}
+                """).Register();
+            JsonSerializerOptions options = new JsonSerializerOptions(web ? JsonSerializerDefaults.Web : JsonSerializerDefaults.General);
+            JsonElement json = JsonSerializer.SerializeToElement(registration, options);
+            Assert.Equal(cursor, json.GetProperty(web ? "lastEventId" : "LastEventId").GetInt64());
+            Assert.False(json.TryGetProperty("LastEventId64", out _));
+            Assert.False(json.TryGetProperty("lastEventId64", out _));
+            Assert.False(json.TryGetProperty(web ? "LastEventId" : "lastEventId", out _));
+            Assert.Equal("queue", json.GetProperty(web ? "queueId" : "QueueId").GetString());
+            Assert.Equal("13", json.GetProperty(web ? "zulipVersion" : "ZulipVersion").GetString());
+            Assert.Equal(cursor, json.GetProperty(web ? "rawInitialState" : "RawInitialState")
+                .GetProperty("last_event_id").GetInt64());
+            Assert.Equal(cursor, json.GetProperty(web ? "response" : "Response").GetProperty("last_event_id").GetInt64());
+            Assert.Equal(10, json.GetProperty(web ? "realmUsers" : "RealmUsers")[0].GetProperty("user_id").GetInt32());
+            Assert.Equal(123, json.GetProperty(web ? "presences" : "Presences").GetProperty("10")
+                .GetProperty("active_timestamp").GetInt32());
+        }
+
+        /// <summary>Registration serialization keeps omission rules, collection read-only behavior and nested converters.</summary>
+        [Fact]
+        public async Task Events_RegistrationSerializationHonorsCallerOptions()
+        {
+            RegistrationResult registration = await CreateEvents("""
+                {"result":"success","queue_id":"queue","last_event_id":0,"starred_messages":[]}
+                """).Register();
+            JsonSerializerOptions options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+            options.Converters.Add(new RegistrationResponseTestConverter());
+            JsonElement json = JsonSerializer.SerializeToElement(registration, options);
+            Assert.Equal(0, json.GetProperty("last_event_id").GetInt64());
+            Assert.False(json.TryGetProperty("zulip_version", out _));
+            Assert.Equal("custom-response", json.GetProperty("response").GetString());
+            Assert.Empty(json.GetProperty("starred_messages").EnumerateArray());
+
+            options = new JsonSerializerOptions(options) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault };
+            json = JsonSerializer.SerializeToElement(registration, options);
+            Assert.False(json.TryGetProperty("last_event_id", out _));
+            Assert.Equal("queue", json.GetProperty("queue_id").GetString());
+
+            options = new JsonSerializerOptions(options) { IgnoreReadOnlyProperties = true };
+            json = JsonSerializer.SerializeToElement(registration, options);
+            Assert.False(json.TryGetProperty("queue_id", out _));
+            Assert.False(json.TryGetProperty("response", out _));
+            Assert.False(json.TryGetProperty("raw_initial_state", out _));
+            Assert.Empty(json.GetProperty("starred_messages").EnumerateArray());
+            Assert.Empty(json.GetProperty("ignored_parameters_unsupported").EnumerateArray());
+            Assert.Throws<NotSupportedException>(() => JsonSerializer.Deserialize<RegistrationResult>("{}"));
+        }
+
+        /// <summary>Cursor aliasing does not replace native number handling or reference metadata for other fields.</summary>
+        [Fact]
+        public async Task Events_RegistrationSerializationPreservesNativeMetadata()
+        {
+            RegistrationResult registration = await CreateEvents("""
+                {"result":"success","queue_id":"queue","last_event_id":2147483648,"starred_messages":[31]}
+                """).Register();
+            JsonSerializerOptions options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                ReferenceHandler = ReferenceHandler.Preserve,
+                NumberHandling = JsonNumberHandling.WriteAsString
+            };
+            options.Converters.Add(new RegistrationResponseTestConverter());
+            JsonElement json = JsonSerializer.SerializeToElement(registration, options);
+            Assert.Equal("1", json.GetProperty("$id").GetString());
+            Assert.Equal("2147483648", json.GetProperty("lastEventId").GetString());
+            Assert.Equal("custom-response", json.GetProperty("response").GetString());
+            Assert.Equal("31", json.GetProperty("starredMessages").GetProperty("$values")[0].GetString());
+            Assert.False(json.TryGetProperty("lastEventId64", out _));
+        }
+
+        /// <summary>A caller-supplied nested response converter used to verify option forwarding.</summary>
+        private sealed class RegistrationResponseTestConverter : JsonConverter<ZulipResponse>
+        {
+            /// <summary>Rejects reads, which are not needed by this serialization fixture.</summary>
+            /// <param name="reader">The JSON reader.</param>
+            /// <param name="typeToConvert">The response type.</param>
+            /// <param name="options">The serializer options.</param>
+            /// <returns>No response.</returns>
+            public override ZulipResponse Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+                throw new NotSupportedException();
+
+            /// <summary>Writes an unmistakable nested response representation.</summary>
+            /// <param name="writer">The JSON writer.</param>
+            /// <param name="value">The response.</param>
+            /// <param name="options">The serializer options.</param>
+            public override void Write(Utf8JsonWriter writer, ZulipResponse value, JsonSerializerOptions options) =>
+                writer.WriteStringValue("custom-response");
         }
 
         /// <summary>Fetches the actual initial registration fields, capabilities and request-local warnings.</summary>
