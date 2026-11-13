@@ -39,6 +39,12 @@ var client = new ZulipClient("https://zulip.example.com", "user@example.com", "y
 var client = new ZulipClient("path/to/zuliprc");
 ```
 
+Reuse clients rather than constructing one per request. `ZulipClient` implements
+`IDisposable`: disposing it releases only an internally created `HttpClient`;
+injected clients and upload streams remain caller-owned. Use `using` for an owned
+client's lifetime. Subsequent transport operations throw `ObjectDisposedException`,
+including calls through Try methods.
+
 You can also supply your own `HttpClient` or use a `curl` subprocess as the HTTP backend:
 
 ```csharp
@@ -98,7 +104,7 @@ Required response fields and essential identities are validated: missing/null/ma
 
 `LastResponse` is the **most recently completed** request, not a per-call association under concurrency. Detailed presence, registration, batch and narrow-flag results carry their own `Response`; prefer these for request-local diagnostics. Do not retry an applied mutation just because a compatibility warning was returned. A malformed result after a mutation is also not proof of rollback; inspect the response before deciding to retry.
 
-Ordinary HTTP timeout/cancellation failures return explicit Try details and refresh `LastResponse`. Production HttpClient and curl responses retain actual HTTP status/body, with HTTP failure taking precedence over success-shaped JSON. Request-local HTTP objects are disposed after materialization; injected clients remain caller-owned. Message results and typed diagnostics do not share mutable lists or objects, including when an unobserved wire list is reused to avoid redundant deserialization.
+Ordinary HTTP timeout/cancellation failures return explicit Try details and refresh `LastResponse`. Production HttpClient and curl responses retain actual HTTP status/body, with HTTP failure taking precedence over success-shaped JSON. Network failures return diagnostic details without unsolicited console output. Request-local HTTP objects, including password-bootstrap content, are disposed after materialization; injected clients remain caller-owned. Message results and typed diagnostics do not share mutable lists or objects, including when an unobserved wire list is reused to avoid redundant deserialization.
 
 ### Examples
 

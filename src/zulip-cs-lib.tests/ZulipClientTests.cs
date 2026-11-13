@@ -18,9 +18,163 @@ using zulip_cs_lib;
 
 namespace zulip_set_lib.tests
 {
+    /// <summary>Isolates tests that temporarily capture the process-wide console.</summary>
+    [CollectionDefinition("Console isolation", DisableParallelization = true)]
+    public sealed class ConsoleIsolationCollection
+    {
+    }
+
     /// <summary>Basic Zulip client tests.</summary>
+    [Collection("Console isolation")]
     public class ZulipClientTests
     {
+        /// <summary>Owned transports are disposed once while injected transports remain reusable.</summary>
+        /// <param name="owned">Whether the wrapper owns the HTTP client.</param>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task ZulipClient_DisposalPreservesTransportOwnership(bool owned)
+        {
+            Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
+            handler.Protected().Setup("Dispose", ItExpr.IsAny<bool>());
+            handler.Protected().Setup<Task<HttpResponseMessage>>(
+                "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(() => new HttpResponseMessage(HttpStatusCode.OK));
+            using HttpClient http = new HttpClient(handler.Object);
+            ZulipClient client = new ZulipClient(_site, _email, _key, http, owned);
+            client.Dispose();
+            client.Dispose();
+            handler.Protected().Verify("Dispose", owned ? Times.Once() : Times.Never(), ItExpr.Is<bool>(value => value));
+            if (owned)
+            {
+                await Assert.ThrowsAsync<ObjectDisposedException>(() => http.GetAsync(_site, TestContext.Current.CancellationToken));
+            }
+            else
+            {
+                using HttpResponseMessage response = await http.GetAsync(_site, TestContext.Current.CancellationToken);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            }
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => client.Messages.TrySendStream("hello", "topic", "channel"));
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => client.Messages.SendStream("hello", "topic", "channel"));
+            using MemoryStream input = new MemoryStream([1, 2, 3]);
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => client.Files.TryUpload(input, "file.bin", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.True(input.CanRead);
+        }
+
+        /// <summary>A disposed curl wrapper rejects requests and uploads before starting a process.</summary>
+        [Fact]
+        public async Task ZulipClient_DisposedCurlRejectsTransportOperations()
+        {
+            using ZulipClient client = new ZulipClient(_site, _email, _key, "missing-curl");
+            client.Dispose();
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => client.Events.TryGetEvents("queue", -1));
+            using MemoryStream input = new MemoryStream([1, 2, 3]);
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => client.Files.TryUpload(input, "file.bin", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.True(input.CanRead);
+        }
+
+        /// <summary>Config wrappers do not take ownership of an injected HTTP client.</summary>
+        [Fact]
+        public async Task ZulipClient_ConfigDisposalPreservesInjectedClient()
+        {
+            string file = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(file, $"[api]\nsite={_site}\nemail={_email}\nkey={_key}\n");
+                Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
+                handler.Protected().Setup<Task<HttpResponseMessage>>(
+                    "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                    .ReturnsAsync(() => new HttpResponseMessage(HttpStatusCode.OK));
+                using HttpClient http = new HttpClient(handler.Object);
+                using ZulipClient client = new ZulipClient(file, http);
+                client.Dispose();
+                using HttpResponseMessage response = await http.GetAsync(_site, TestContext.Current.CancellationToken);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            }
+            finally
+            {
+                File.Delete(file);
+            }
+        }
+
+        /// <summary>Bootstrap content is disposed on success and failure while injected clients stay reusable.</summary>
+        /// <param name="body">The bootstrap response.</param>
+        /// <param name="success">Whether the credentials are valid.</param>
+        [Theory]
+        [InlineData("{\"result\":\"success\",\"api_key\":\"key\",\"email\":\"a@example.org\"}", true)]
+        [InlineData("{\"result\":\"success\"}", false)]
+        [InlineData("not JSON", false)]
+        public async Task ZulipClient_FetchApiKeyDisposesContentAndPreservesInjectedClient(string body, bool success)
+        {
+            List<HttpRequestMessage> requests = [];
+            List<MemoryStream> streams = [];
+            Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
+            handler.Protected().Setup<Task<HttpResponseMessage>>(
+                "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
+                {
+                    requests.Add(request);
+                    MemoryStream stream = new MemoryStream(Encoding.UTF8.GetBytes(body));
+                    streams.Add(stream);
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) });
+                });
+            using HttpClient http = new HttpClient(handler.Object);
+            for (int index = 0; index < 2; index++)
+            {
+                (bool actualSuccess, string? details, string? apiKey, string? email) actual =
+                    await ZulipClient.TryFetchApiKey(_site, _email, "password", http);
+                Assert.Equal(success, actual.actualSuccess);
+                Assert.False(streams[index].CanRead);
+                await Assert.ThrowsAsync<ObjectDisposedException>(
+                    () => requests[index].Content!.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            }
+        }
+
+        /// <summary>Network failures retain wrapped details without writing to the host's console.</summary>
+        [Fact]
+        public async Task ZulipClient_HttpNetworkFailureReturnsDiagnosticsWithoutConsoleOutput()
+        {
+            Mock<HttpMessageHandler> handler = new Mock<HttpMessageHandler>();
+            handler.Protected().SetupSequence<Task<HttpResponseMessage>>(
+                "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = Utils.ContentForJsonString("{\"result\":\"success\",\"id\":31}")
+                })
+                .ThrowsAsync(new HttpRequestException("connection failed", new IOException("fixture source error")));
+            using HttpClient http = new HttpClient(handler.Object);
+            using ZulipClient client = new ZulipClient(_site, _email, _key, http);
+            Assert.True((await client.Messages.TrySendStream("hello", "topic", "channel")).success);
+            ZulipResponse previous = client.LastResponse!;
+            TextWriter originalOut = Console.Out;
+            TextWriter originalError = Console.Error;
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
+            try
+            {
+                Console.SetOut(output);
+                Console.SetError(error);
+                (bool success, string? details, ulong messageId) actual =
+                    await client.Messages.TrySendStream("hello", "topic", "channel");
+                Assert.False(actual.success);
+                Assert.Contains("connection failed", actual.details);
+                Assert.Contains("fixture source error", actual.details);
+                Assert.NotSame(previous, client.LastResponse);
+                Assert.False(client.LastResponse!.Success);
+                Assert.Equal(string.Empty, output.ToString());
+                Assert.Equal(string.Empty, error.ToString());
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+                Console.SetError(originalError);
+            }
+        }
+
         /// <summary>Gets whether the external executable required by real-process tests is available.</summary>
         public static bool CurlAvailable
         {

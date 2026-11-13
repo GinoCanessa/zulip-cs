@@ -74,7 +74,7 @@ Use `Events.Register(RegistrationOptions?)` when initial state, capabilities, ti
 
 Both return `ZulipResponse`, so resource behavior remains consistent independent of transport.
 
-Ordinary HTTP timeout/cancellation becomes a failed response with fresh diagnostics. Both production backends retain HTTP status/body and reject failed HTTP statuses independently of JSON success; request-local HTTP objects are disposed after materialization.
+Ordinary HTTP timeout/cancellation becomes a failed response with fresh diagnostics and no unsolicited console output. Both production backends retain HTTP status/body and reject failed HTTP statuses independently of JSON success; request-local HTTP objects are disposed after materialization. Disposing `ZulipClient` releases only an internally owned HTTP client; subsequent transport operations throw `ObjectDisposedException`, including Try methods.
 
 ---
 Generated on: 2026-04-07  
